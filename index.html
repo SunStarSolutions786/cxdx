@@ -783,6 +783,14 @@ function showLoginScreen() {
   $('#global-loader').classList.add('hidden');
   $('#app-shell').classList.add('hidden');
   $('#login-screen').classList.remove('hidden');
+  resetLoginForm();
+}
+function resetLoginForm() {
+  const btn = $('#login-submit-btn');
+  btn.disabled = false;
+  btn.innerHTML = '<span class="btn-label">Sign In</span>';
+  $('#login-error').style.display = 'none';
+  $('#login-password').value = '';
 }
 function showAppShell() {
   $('#global-loader').classList.add('hidden');
