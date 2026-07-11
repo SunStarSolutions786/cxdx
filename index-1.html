@@ -1,0 +1,2225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>CXDX · Prescription to Conversion, Reconciled</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2222%22 fill=%22%230E7C7B%22/><path d=%22M18 55 L36 55 L44 30 L56 72 L64 45 L72 55 L84 55%22 stroke=%22white%22 stroke-width=%228%22 fill=%22none%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   CXDX DESIGN SYSTEM — "Pulse Ledger"
+   Clinical teal + paper background, amber leakage / green
+   conversion semantics, animated ECG pulse as signature motif.
+   ============================================================ */
+:root{
+  --ink-900:#0B1F26;
+  --ink-800:#122A31;
+  --ink-700:#1C3438;
+  --teal-700:#0B6665;
+  --teal-600:#0E7C7B;
+  --teal-500:#14948F;
+  --teal-400:#3FB0AB;
+  --teal-100:#DCF0EE;
+  --teal-50:#EFF8F7;
+  --green-600:#178A56;
+  --green-500:#1FAA6D;
+  --green-100:#DEF3E8;
+  --amber-600:#B5620D;
+  --amber-500:#DE7F1E;
+  --amber-100:#FBEAD4;
+  --red-600:#DC2626;
+  --red-100:#FDE4E4;
+  --paper-50:#F5F8F7;
+  --paper-0:#FFFFFF;
+  --line-200:#DCE6E4;
+  --line-100:#EAF1EF;
+  --slate-600:#3F5257;
+  --slate-500:#5B7278;
+  --slate-400:#7E9297;
+  --slate-300:#A7B8BB;
+  --radius-sm:8px;
+  --radius-md:14px;
+  --radius-lg:22px;
+  --shadow-sm:0 1px 3px rgba(11,31,38,0.07);
+  --shadow-md:0 6px 20px rgba(11,31,38,0.08);
+  --shadow-lg:0 16px 40px rgba(11,31,38,0.14);
+  --ease:cubic-bezier(.4,0,.2,1);
+  --font-display:'Space Grotesk',sans-serif;
+  --font-body:'Inter',sans-serif;
+  --font-mono:'IBM Plex Mono',monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html{-webkit-text-size-adjust:100%;}
+body{
+  font-family:var(--font-body);
+  background:var(--paper-50);
+  color:var(--ink-900);
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+}
+img,svg{display:block;max-width:100%;}
+button{font-family:inherit;cursor:pointer;}
+input,select,textarea{font-family:inherit;font-size:14px;}
+a{color:inherit;}
+::selection{background:var(--teal-100);color:var(--teal-700);}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:0.001ms !important;animation-iteration-count:1 !important;transition-duration:0.001ms !important;}
+}
+
+/* ---------- Scrollbar ---------- */
+::-webkit-scrollbar{width:10px;height:10px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--line-200);border-radius:8px;}
+::-webkit-scrollbar-thumb:hover{background:var(--slate-300);}
+
+/* ---------- Utility ---------- */
+.hidden{display:none !important;}
+.mono{font-family:var(--font-mono);}
+.u-flex{display:flex;}
+.u-between{display:flex;align-items:center;justify-content:space-between;}
+.u-gap-8{gap:8px;} .u-gap-12{gap:12px;}
+.u-muted{color:var(--slate-500);}
+.u-center{display:flex;align-items:center;justify-content:center;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* ============================================================
+   PULSE LOGO — signature motif, reused sparingly
+   ============================================================ */
+.pulse-logo{display:inline-flex;align-items:center;gap:10px;}
+.pulse-logo .mark{
+  width:40px;height:40px;border-radius:11px;
+  background:linear-gradient(155deg,var(--teal-600),var(--ink-800));
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:var(--shadow-sm);flex-shrink:0;
+}
+.pulse-logo .mark svg{width:24px;height:24px;overflow:visible;}
+.pulse-logo .mark path{
+  fill:none;stroke:#fff;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;
+  stroke-dasharray:120;stroke-dashoffset:120;
+  animation:draw-pulse 1.6s var(--ease) 0.2s forwards;
+}
+@keyframes draw-pulse{to{stroke-dashoffset:0;}}
+.pulse-logo .wordmark{
+  font-family:var(--font-display);font-weight:700;font-size:22px;letter-spacing:0.5px;
+  background:linear-gradient(100deg,var(--ink-900) 30%,var(--teal-600) 70%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.pulse-logo.on-dark .wordmark{
+  background:linear-gradient(100deg,#fff 30%,var(--teal-400) 75%);
+  -webkit-background-clip:text;background-clip:text;
+}
+.pulse-logo .tagline{font-size:11px;color:var(--slate-400);letter-spacing:0.3px;margin-top:1px;}
+
+/* traveling highlight dot loop on the pulse path, used on login hero */
+.pulse-trace{position:relative;width:100%;max-width:360px;height:34px;margin:0 auto;}
+.pulse-trace svg{width:100%;height:100%;overflow:visible;}
+.pulse-trace path{
+  fill:none;stroke:var(--teal-500);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;
+  stroke-dasharray:6 460;stroke-dashoffset:0;
+  animation:trace-run 3.2s linear infinite;
+  opacity:0.85;
+}
+.pulse-trace path.ghost{stroke:var(--line-200);stroke-dasharray:none;opacity:1;animation:none;stroke-width:1.5;}
+@keyframes trace-run{
+  0%{stroke-dasharray:6 460;stroke-dashoffset:0;}
+  85%{stroke-dasharray:6 460;stroke-dashoffset:-460;}
+  100%{stroke-dasharray:6 460;stroke-dashoffset:-466;}
+}
+
+/* ============================================================
+   LOGIN
+   ============================================================ */
+#login-screen{
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:24px;position:relative;overflow:hidden;background:var(--paper-50);
+}
+#login-screen::before{
+  content:'';position:absolute;inset:0;
+  background:
+    radial-gradient(600px 300px at 15% 0%, var(--teal-100) 0%, transparent 60%),
+    radial-gradient(500px 260px at 100% 100%, var(--amber-100) 0%, transparent 55%);
+  opacity:0.7;pointer-events:none;
+}
+.login-hero{position:relative;text-align:center;margin-bottom:28px;animation:rise-in 0.7s var(--ease) both;}
+.login-hero .pulse-logo{justify-content:center;transform:scale(1.15);margin-bottom:10px;}
+.login-hero h1{font-family:var(--font-display);font-size:15px;font-weight:600;color:var(--slate-500);letter-spacing:0.2px;margin-top:6px;}
+.login-card{
+  position:relative;width:100%;max-width:388px;background:var(--paper-0);
+  border:1px solid var(--line-200);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);
+  padding:32px 30px 28px;animation:rise-in 0.7s var(--ease) 0.1s both;
+}
+@keyframes rise-in{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:translateY(0);}}
+.login-card .field{margin-bottom:16px;}
+.login-card label{display:block;font-size:12.5px;font-weight:600;color:var(--slate-600);margin-bottom:6px;letter-spacing:0.15px;}
+.login-card input{
+  width:100%;padding:11px 13px;border:1.5px solid var(--line-200);border-radius:var(--radius-sm);
+  background:var(--paper-50);transition:border-color var(--transition),background var(--transition);
+}
+.login-card input:focus{outline:none;border-color:var(--teal-500);background:var(--paper-0);}
+#login-error{
+  display:none;background:var(--red-100);color:var(--red-600);font-size:13px;font-weight:500;
+  padding:10px 12px;border-radius:var(--radius-sm);margin-bottom:14px;
+}
+.login-foot{text-align:center;margin-top:22px;}
+.login-foot .pulse-trace{opacity:0.8;}
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  font-size:14px;font-weight:600;border-radius:var(--radius-sm);border:1.5px solid transparent;
+  padding:10px 18px;transition:transform 120ms var(--ease),box-shadow var(--transition),background var(--transition),border-color var(--transition),opacity var(--transition);
+  white-space:nowrap;
+}
+.btn:active{transform:scale(0.97);}
+.btn-block{width:100%;}
+.btn-primary{background:linear-gradient(120deg,var(--teal-600),var(--teal-700));color:#fff;box-shadow:0 2px 10px rgba(14,124,123,0.28);}
+.btn-primary:hover{box-shadow:0 4px 16px rgba(14,124,123,0.36);}
+.btn-secondary{background:var(--paper-0);color:var(--ink-900);border-color:var(--line-200);}
+.btn-secondary:hover{border-color:var(--teal-400);color:var(--teal-700);}
+.btn-ghost{background:transparent;color:var(--slate-600);}
+.btn-ghost:hover{background:var(--line-100);}
+.btn-danger{background:var(--paper-0);color:var(--red-600);border-color:var(--red-100);}
+.btn-danger:hover{background:var(--red-100);}
+.btn-danger-solid{background:var(--red-600);color:#fff;}
+.btn-danger-solid:hover{background:#c41f1f;}
+.btn-sm{padding:7px 13px;font-size:12.5px;border-radius:7px;}
+.btn:disabled{opacity:0.55;cursor:not-allowed;}
+.btn svg{width:16px;height:16px;flex-shrink:0;}
+.icon-btn{
+  width:34px;height:34px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;
+  background:transparent;border:1.5px solid transparent;color:var(--slate-500);transition:all var(--transition);
+}
+.icon-btn:hover{background:var(--line-100);color:var(--ink-900);}
+.icon-btn.danger:hover{background:var(--red-100);color:var(--red-600);}
+.icon-btn svg{width:17px;height:17px;}
+
+/* ============================================================
+   APP SHELL
+   ============================================================ */
+#app-shell{display:flex;min-height:100vh;}
+#sidebar{
+  width:242px;flex-shrink:0;background:var(--ink-900);color:#fff;
+  display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:40;
+  transition:transform var(--transition);
+}
+#sidebar .side-head{padding:22px 20px 16px;}
+#sidebar .pulse-logo{transform:scale(0.92);transform-origin:left center;}
+.company-chip{
+  margin:2px 20px 14px;padding:9px 12px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);
+  border-radius:10px;font-size:12px;color:var(--teal-400);display:flex;align-items:center;gap:7px;
+}
+.company-chip svg{width:14px;height:14px;flex-shrink:0;}
+.company-chip b{color:#fff;font-weight:600;display:block;font-size:12.5px;}
+nav.side-nav{flex:1;padding:6px 12px;overflow-y:auto;}
+.nav-item{
+  display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:10px;margin-bottom:2px;
+  color:rgba(255,255,255,0.62);font-size:13.5px;font-weight:500;position:relative;
+  transition:background var(--transition),color var(--transition);
+}
+.nav-item svg{width:17px;height:17px;flex-shrink:0;}
+.nav-item:hover{background:rgba(255,255,255,0.06);color:#fff;}
+.nav-item.active{background:rgba(20,148,143,0.22);color:#fff;}
+.nav-item.active::before{
+  content:'';position:absolute;left:-12px;top:50%;transform:translateY(-50%);width:3px;height:18px;
+  background:var(--teal-400);border-radius:0 3px 3px 0;
+}
+#sidebar .side-foot{padding:14px 20px 18px;border-top:1px solid rgba(255,255,255,0.08);}
+.user-chip{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.user-avatar{
+  width:34px;height:34px;border-radius:50%;background:linear-gradient(140deg,var(--teal-500),var(--teal-700));
+  display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;flex-shrink:0;
+}
+.user-chip .who{overflow:hidden;}
+.user-chip .who .nm{font-size:13px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.user-chip .who .rl{font-size:11px;color:rgba(255,255,255,0.45);text-transform:capitalize;}
+.sidebar-pulse{height:26px;margin-top:6px;opacity:0.5;}
+.sidebar-pulse svg{width:100%;height:100%;}
+.sidebar-pulse path{fill:none;stroke:var(--teal-400);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:4 300;animation:trace-run 4s linear infinite;}
+
+#main-col{margin-left:242px;flex:1;display:flex;flex-direction:column;min-height:100vh;min-width:0;}
+#topbar{
+  height:64px;flex-shrink:0;background:var(--paper-0);border-bottom:1px solid var(--line-200);
+  display:flex;align-items:center;justify-content:space-between;padding:0 26px;position:sticky;top:0;z-index:30;
+}
+#topbar .crumb{font-family:var(--font-display);font-weight:600;font-size:16.5px;display:flex;align-items:center;gap:10px;}
+#topbar .crumb .sub{font-family:var(--font-body);font-weight:400;font-size:12.5px;color:var(--slate-400);}
+#menu-toggle{display:none;}
+#content{flex:1;padding:26px;max-width:1360px;width:100%;}
+.view{animation:fade-up 0.35s var(--ease) both;}
+@keyframes fade-up{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+
+/* ============================================================
+   CARDS / STATS
+   ============================================================ */
+.card{background:var(--paper-0);border:1px solid var(--line-200);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);}
+.card-pad{padding:22px;}
+.card-head{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--line-100);}
+.card-head h3{font-family:var(--font-display);font-size:15px;font-weight:600;}
+
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:22px;}
+.stat-card{
+  background:var(--paper-0);border:1px solid var(--line-200);border-radius:var(--radius-md);padding:18px 20px;
+  transition:transform var(--transition),box-shadow var(--transition);position:relative;overflow:hidden;
+}
+.stat-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md);}
+.stat-card .lbl{font-size:11.5px;font-weight:600;color:var(--slate-500);text-transform:uppercase;letter-spacing:0.5px;display:flex;align-items:center;gap:6px;}
+.stat-card .val{font-family:var(--font-mono);font-size:26px;font-weight:600;margin-top:8px;color:var(--ink-900);}
+.stat-card .delta{font-size:12px;margin-top:5px;font-weight:600;}
+.stat-card.accent-teal{border-top:3px solid var(--teal-500);}
+.stat-card.accent-green{border-top:3px solid var(--green-500);}
+.stat-card.accent-amber{border-top:3px solid var(--amber-500);}
+.stat-card.accent-ink{border-top:3px solid var(--ink-700);}
+.stat-card .val.c-green{color:var(--green-600);}
+.stat-card .val.c-amber{color:var(--amber-600);}
+
+/* ============================================================
+   FORMS
+   ============================================================ */
+.form-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;}
+.form-grid.cols-3{grid-template-columns:repeat(3,1fr);}
+.field-wrap{display:flex;flex-direction:column;gap:6px;}
+.field-wrap.span-2{grid-column:span 2;}
+.field-wrap label{font-size:12.5px;font-weight:600;color:var(--slate-600);}
+.field-wrap label .req{color:var(--amber-600);}
+.field-wrap .hint{font-size:11px;color:var(--slate-400);}
+.field-wrap .err{font-size:11.5px;color:var(--red-600);display:none;font-weight:500;}
+input[type=text],input[type=email],input[type=password],input[type=number],input[type=date],input[type=month],select,textarea{
+  width:100%;padding:10px 12px;border:1.5px solid var(--line-200);border-radius:var(--radius-sm);
+  background:var(--paper-0);color:var(--ink-900);transition:border-color var(--transition);
+}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--teal-500);}
+input.invalid,select.invalid{border-color:var(--red-600);}
+select{appearance:none;background-image:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235B7278' stroke-width='2.5'><path d='M6 9l6 6 6-6'/></svg>");background-repeat:no-repeat;background-position:right 10px center;padding-right:32px;}
+textarea{resize:vertical;min-height:64px;}
+input.uhid-input{text-transform:uppercase;font-family:var(--font-mono);letter-spacing:0.5px;}
+.checkbox-row{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--slate-600);}
+
+.test-row{
+  display:grid;grid-template-columns:1fr 130px 155px 34px;gap:10px;align-items:end;margin-bottom:10px;
+  padding:14px 14px 14px 40px;background:var(--paper-50);border-radius:var(--radius-sm);border:1px solid var(--line-100);position:relative;
+}
+.test-row .field-wrap label{font-size:11px;}
+.test-row .row-num{
+  position:absolute;left:12px;top:50%;transform:translateY(-50%);width:20px;height:20px;border-radius:50%;
+  background:var(--teal-100);color:var(--teal-700);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;
+}
+#add-test-row-btn{margin-top:2px;}
+
+.form-page{max-width:760px;margin:0 auto;}
+.tests-summary-pill{
+  display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--teal-700);
+  background:var(--teal-50);border:1px solid var(--teal-100);padding:5px 12px;border-radius:99px;
+}
+.form-section-icon{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:8px;background:var(--teal-100);color:var(--teal-700);margin-right:8px;}
+.form-section-icon svg{width:14px;height:14px;}
+
+/* ============================================================
+   TABLE
+   ============================================================ */
+.table-wrap{overflow-x:auto;border-radius:var(--radius-lg);border:1px solid var(--line-200);background:var(--paper-0);}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:640px;}
+thead th{
+  text-align:left;padding:12px 16px;background:var(--paper-50);color:var(--slate-600);font-weight:600;
+  font-size:11.5px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid var(--line-200);white-space:nowrap;
+  position:sticky;top:0;
+}
+tbody td{padding:12px 16px;border-bottom:1px solid var(--line-100);white-space:nowrap;color:var(--ink-900);}
+tbody tr:last-child td{border-bottom:none;}
+tbody tr{transition:background var(--transition);}
+tbody tr:hover{background:var(--paper-50);}
+tbody td.num,thead th.num{text-align:right;font-family:var(--font-mono);}
+td.uhid-cell{font-family:var(--font-mono);letter-spacing:0.3px;font-weight:600;}
+tr.total-row td{background:var(--amber-100);font-weight:700;border-top:2px solid var(--amber-500);border-bottom:2px solid var(--amber-500);}
+tr.total-row{position:sticky;bottom:0;}
+
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:99px;letter-spacing:0.2px;}
+.badge svg{width:11px;height:11px;}
+.badge.matched{background:var(--green-100);color:var(--green-600);}
+.badge.leakage{background:var(--amber-100);color:var(--amber-600);}
+.badge.neutral{background:var(--line-100);color:var(--slate-500);}
+.badge.active{background:var(--green-100);color:var(--green-600);}
+.badge.inactive{background:var(--red-100);color:var(--red-600);}
+
+.table-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;flex-wrap:wrap;}
+.search-box{position:relative;min-width:220px;flex:1;max-width:320px;}
+.search-box svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:15px;height:15px;color:var(--slate-400);}
+.search-box input{padding-left:34px;}
+.pill-filters{display:flex;gap:8px;flex-wrap:wrap;}
+.pill{padding:6px 13px;border-radius:99px;font-size:12.5px;font-weight:600;border:1.5px solid var(--line-200);color:var(--slate-500);background:var(--paper-0);transition:all var(--transition);}
+.pill.active{background:var(--ink-900);border-color:var(--ink-900);color:#fff;}
+
+.empty-state{text-align:center;padding:56px 24px;color:var(--slate-500);}
+.empty-state svg{width:46px;height:46px;color:var(--slate-300);margin:0 auto 14px;}
+.empty-state h4{font-family:var(--font-display);font-size:15.5px;color:var(--ink-900);margin-bottom:5px;}
+.empty-state p{font-size:13px;max-width:340px;margin:0 auto;}
+
+/* ============================================================
+   MODAL / TOAST / OVERLAY
+   ============================================================ */
+#modal-root{position:fixed;inset:0;z-index:100;display:none;}
+#modal-root.show{display:block;}
+.modal-backdrop{position:absolute;inset:0;background:rgba(11,31,38,0.42);backdrop-filter:blur(2px);animation:fade-in 0.2s var(--ease);}
+@keyframes fade-in{from{opacity:0;}to{opacity:1;}}
+.modal-box{
+  position:relative;max-width:560px;width:calc(100% - 32px);margin:6vh auto;max-height:88vh;overflow-y:auto;
+  background:var(--paper-0);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);
+  animation:modal-in 0.25s var(--ease);
+}
+.modal-box.wide{max-width:760px;}
+@keyframes modal-in{from{opacity:0;transform:translateY(10px) scale(0.98);}to{opacity:1;transform:translateY(0) scale(1);}}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:20px 22px;border-bottom:1px solid var(--line-100);position:sticky;top:0;background:var(--paper-0);z-index:2;border-radius:var(--radius-lg) var(--radius-lg) 0 0;}
+.modal-head h3{font-family:var(--font-display);font-size:17px;font-weight:600;}
+.modal-body{padding:22px;}
+.modal-foot{display:flex;justify-content:flex-end;gap:10px;padding:16px 22px;border-top:1px solid var(--line-100);position:sticky;bottom:0;background:var(--paper-0);border-radius:0 0 var(--radius-lg) var(--radius-lg);}
+
+#toast-stack{position:fixed;bottom:20px;right:20px;z-index:200;display:flex;flex-direction:column;gap:10px;max-width:340px;}
+.toast{
+  background:var(--ink-900);color:#fff;padding:13px 16px;border-radius:var(--radius-sm);box-shadow:var(--shadow-lg);
+  font-size:13px;font-weight:500;display:flex;align-items:center;gap:10px;animation:toast-in 0.3s var(--ease);
+}
+.toast svg{width:17px;height:17px;flex-shrink:0;}
+.toast.success{background:var(--green-600);}
+.toast.error{background:var(--red-600);}
+.toast.info{background:var(--ink-800);}
+@keyframes toast-in{from{opacity:0;transform:translateX(30px);}to{opacity:1;transform:translateX(0);}}
+
+/* ============================================================
+   MISC: chips, stepper, mapping ui, charts, loaders
+   ============================================================ */
+.section-label{font-size:11.5px;font-weight:700;color:var(--teal-700);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px;display:block;}
+.divider{height:1px;background:var(--line-100);margin:18px 0;}
+.map-row{display:grid;grid-template-columns:1fr 24px 1fr;align-items:center;gap:10px;margin-bottom:10px;}
+.map-row .arrow{color:var(--slate-400);}
+.map-row .field-name{font-size:13px;font-weight:600;color:var(--ink-900);display:flex;align-items:center;gap:6px;}
+.map-row .field-name .req-dot{width:6px;height:6px;border-radius:50%;background:var(--amber-500);}
+.file-drop{
+  border:2px dashed var(--line-200);border-radius:var(--radius-md);padding:26px;text-align:center;
+  transition:all var(--transition);cursor:pointer;background:var(--paper-50);
+}
+.file-drop:hover,.file-drop.drag{border-color:var(--teal-500);background:var(--teal-50);}
+.file-drop svg{width:30px;height:30px;color:var(--teal-500);margin:0 auto 8px;}
+.file-drop .fname{font-family:var(--font-mono);font-size:12.5px;color:var(--teal-700);margin-top:6px;}
+
+.month-tile{
+  display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border:1px solid var(--line-200);
+  border-radius:var(--radius-md);margin-bottom:10px;transition:all var(--transition);background:var(--paper-0);
+}
+.month-tile:hover{box-shadow:var(--shadow-sm);}
+.month-tile .m-name{font-family:var(--font-display);font-weight:600;font-size:14.5px;}
+.month-tile .m-meta{font-size:11.5px;color:var(--slate-500);margin-top:2px;}
+
+.progress-track{height:8px;border-radius:99px;background:var(--line-100);overflow:hidden;}
+.progress-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--green-500),var(--teal-500));transition:width 0.6s var(--ease);}
+.progress-fill.leak{background:linear-gradient(90deg,var(--amber-500),var(--amber-600));}
+
+.loader-ring{width:20px;height:20px;border:2.5px solid var(--line-200);border-top-color:var(--teal-500);border-radius:50%;animation:spin 0.7s linear infinite;}
+
+.chart-legend{display:flex;gap:18px;justify-content:center;margin-top:14px;flex-wrap:wrap;}
+.chart-legend .li{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--slate-600);font-weight:500;}
+.chart-legend .dot{width:9px;height:9px;border-radius:50%;}
+
+.role-tag{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:99px;text-transform:uppercase;letter-spacing:0.4px;}
+.role-tag.superadmin{background:var(--ink-800);color:var(--teal-400);}
+.role-tag.admin{background:var(--teal-100);color:var(--teal-700);}
+
+#global-loader{position:fixed;inset:0;background:var(--paper-50);z-index:500;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width:900px){
+  #sidebar{transform:translateX(-100%);width:250px;box-shadow:var(--shadow-lg);}
+  #sidebar.open{transform:translateX(0);}
+  #main-col{margin-left:0;}
+  #menu-toggle{display:flex;}
+  .form-grid,.form-grid.cols-3{grid-template-columns:1fr;}
+  .field-wrap.span-2{grid-column:span 1;}
+  .test-row{grid-template-columns:1fr;}
+  #sidebar-scrim{display:none;position:fixed;inset:0;background:rgba(11,31,38,0.4);z-index:39;}
+  #sidebar-scrim.show{display:block;}
+}
+</style>
+</head>
+<body>
+
+<div id="global-loader">
+  <div class="pulse-logo"><div class="mark"><svg viewBox="0 0 24 24"><path d="M2 13 L7 13 L9.5 6 L13 20 L15.5 10 L17.5 13 L22 13"/></svg></div><span class="wordmark">CXDX</span></div>
+  <div class="loader-ring"></div>
+</div>
+
+<!-- ============ LOGIN ============ -->
+<div id="login-screen" class="hidden">
+  <div class="login-hero">
+    <div class="pulse-logo">
+      <div class="mark"><svg viewBox="0 0 24 24"><path d="M2 13 L7 13 L9.5 6 L13 20 L15.5 10 L17.5 13 L22 13"/></svg></div>
+      <span class="wordmark">CXDX</span>
+    </div>
+    <h1>Prescription to Conversion, Reconciled</h1>
+  </div>
+  <form id="login-card" class="login-card">
+    <div id="login-error"></div>
+    <div class="field">
+      <label for="login-email">Email</label>
+      <input type="email" id="login-email" autocomplete="username" placeholder="you@company.com" required>
+    </div>
+    <div class="field" style="margin-bottom:20px;">
+      <label for="login-password">Password</label>
+      <input type="password" id="login-password" autocomplete="current-password" placeholder="••••••••" required>
+    </div>
+    <button type="submit" class="btn btn-primary btn-block" id="login-submit-btn">
+      <span class="btn-label">Sign In</span>
+    </button>
+  </form>
+  <div class="login-foot">
+    <div class="pulse-trace">
+      <svg viewBox="0 0 360 34" preserveAspectRatio="none">
+        <path class="ghost" d="M0 17 L120 17 L138 5 L162 29 L182 12 L198 17 L360 17"/>
+        <path d="M0 17 L120 17 L138 5 L162 29 L182 12 L198 17 L360 17"/>
+      </svg>
+    </div>
+  </div>
+</div>
+
+<!-- ============ APP SHELL ============ -->
+<div id="app-shell" class="hidden">
+  <div id="sidebar-scrim"></div>
+  <aside id="sidebar">
+    <div class="side-head">
+      <div class="pulse-logo on-dark">
+        <div class="mark"><svg viewBox="0 0 24 24"><path d="M2 13 L7 13 L9.5 6 L13 20 L15.5 10 L17.5 13 L22 13"/></svg></div>
+        <span class="wordmark">CXDX</span>
+      </div>
+    </div>
+    <div id="sidebar-company-chip"></div>
+    <nav class="side-nav" id="side-nav"></nav>
+    <div class="side-foot">
+      <div class="user-chip">
+        <div class="user-avatar" id="user-avatar">?</div>
+        <div class="who">
+          <div class="nm" id="user-name">—</div>
+          <div class="rl" id="user-role">—</div>
+        </div>
+      </div>
+      <button class="btn btn-secondary btn-block btn-sm" id="logout-btn">Sign Out</button>
+      <div class="sidebar-pulse"><svg viewBox="0 0 300 26" preserveAspectRatio="none"><path d="M0 13 L100 13 L115 4 L135 22 L150 9 L165 13 L300 13"/></svg></div>
+    </div>
+  </aside>
+
+  <div id="main-col">
+    <header id="topbar">
+      <div class="u-flex u-gap-12" style="align-items:center;">
+        <button id="menu-toggle" class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button>
+        <div class="crumb"><span id="topbar-title">Dashboard</span><span class="sub" id="topbar-sub"></span></div>
+      </div>
+      <div id="topbar-actions" class="u-flex u-gap-12"></div>
+    </header>
+    <main id="content"></main>
+  </div>
+</div>
+
+<div id="modal-root"><div class="modal-backdrop" id="modal-backdrop"></div><div id="modal-slot"></div></div>
+<div id="toast-stack"></div>
+
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script type="module">
+/* ============================================================
+   CXDX APPLICATION SCRIPT
+   ============================================================ */
+
+/* ---- SECTION: FIREBASE SETUP ---- */
+import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
+import {
+  getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut,
+  createUserWithEmailAndPassword, updatePassword as fbUpdatePassword, sendPasswordResetEmail,
+  EmailAuthProvider, reauthenticateWithCredential
+} from "https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js";
+import {
+  getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc,
+  collection, getDocs, query, where, orderBy, writeBatch, serverTimestamp,
+  getCountFromServer, limit as fsLimit
+} from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
+
+// >>> PASTE YOUR FIREBASE PROJECT CONFIG HERE (Firebase Console → Project Settings → General → Your apps) <<<
+const firebaseConfig = {
+  apiKey: "AIzaSyDakgOdDAKeHHWGL8AGf2RBXNIyqjERDqc",
+  authDomain: "cxdx-46e4a.firebaseapp.com",
+  projectId: "cxdx-46e4a",
+  storageBucket: "cxdx-46e4a.firebasestorage.app",
+  messagingSenderId: "15970723098",
+  appId: "1:15970723098:web:ce6a244cffc5d6680678a3"
+};
+
+const CONFIG_IS_PLACEHOLDER = firebaseConfig.apiKey === "YOUR_API_KEY";
+
+const fbApp = initializeApp(firebaseConfig);
+const auth = getAuth(fbApp);
+const db = getFirestore(fbApp);
+
+// Secondary app instance — lets Super Admin create new Company Admin accounts
+// without being signed out of their own session (standard Firebase client-side pattern).
+let secondaryApp = null;
+function getSecondaryAuth() {
+  if (secondaryApp) { try { deleteApp(secondaryApp); } catch (e) {} }
+  secondaryApp = initializeApp(firebaseConfig, "Secondary-" + Date.now());
+  return getAuth(secondaryApp);
+}
+
+/* ---- SECTION: STATE & CONSTANTS ---- */
+const state = {
+  user: null,            // {uid, name, email, role, companyId}
+  companyId: null,       // active company context (admin: own; superadmin: entered company or null)
+  companyName: '',
+  companyActive: true,
+  matchingConfig: null,  // {windowDays, billingMap:{uhid,date,amount,testName,patientName}}
+  doctors: [], tests: [], agents: [],
+  prescriptions: [],     // cache for current filtered view
+  viewParams: {},
+  isSuperAdmin: false,
+};
+
+const DEFAULT_MATCHING_CONFIG = { windowDays: 1, billingMap: { uhid: '', date: '', amount: '', testName: '', patientName: '' } };
+
+const MASTER_DEFS = {
+  doctors: { label: 'Doctor', labelPlural: 'Doctors', fields: [
+      { key: 'name', label: 'Doctor Name', type: 'text', required: true },
+      { key: 'specialization', label: 'Specialization', type: 'text', required: false },
+    ] },
+  tests: { label: 'Test', labelPlural: 'Tests', fields: [
+      { key: 'name', label: 'Test Name', type: 'text', required: true },
+      { key: 'amount', label: 'Amount', type: 'number', required: true },
+    ] },
+  agents: { label: 'Agent', labelPlural: 'Agents', fields: [
+      { key: 'name', label: 'Agent Name', type: 'text', required: true },
+    ] },
+};
+
+const PRESCRIPTION_TEMPLATE_HEADERS = ['Date (YYYY-MM-DD)','UHID','Patient Name','Consultant','Test Given','Test Amount','Consultation Follow Up Date (YYYY-MM-DD, optional)','Test Follow Up Date (YYYY-MM-DD, optional)','Remarks','Entered By'];
+const NO_TEST_LABEL = 'No Test Given'; // sentinel for a visit where the doctor prescribed no test — excluded from test/conversion stats but still counts as a prescription visit
+
+// Add extra prescription fields here without touching the matching engine or
+// any other logic — each entry automatically appears in the New/Edit
+// Prescription form, the Prescriptions and Reports tables, the Excel
+// template + bulk import, and the Excel export. Supported `type`s: 'text',
+// 'number', 'date', 'yesno', and 'select' (needs an `options` array).
+// Example:
+// { key: 'referralSource', label: 'Referral Source', type: 'select', options: ['Walk-in','Doctor Referral','Online'], required: false },
+const CUSTOM_PRESCRIPTION_FIELDS = [
+];
+
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+let unsavedGuard = false; // set true while a form has unsaved edits (for future use)
+
+/* ---- SECTION: ICONS ---- */
+const ICONS = {
+  home:'<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1H10v-6h4v6h3.5a1 1 0 0 0 1-1v-9"/>',
+  fileText:'<path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M14 3v4h4M9 13h6M9 17h6M9 9h2"/>',
+  uploadCloud:'<path d="M7 18a4.5 4.5 0 0 1-1-8.9A5.5 5.5 0 0 1 16.9 8.1 4 4 0 0 1 18 16"/><path d="M12 11v8M9 14l3-3 3 3"/>',
+  flask:'<path d="M9 2h6M10 2v6.5L4.8 18a1.8 1.8 0 0 0 1.6 2.7h11.2a1.8 1.8 0 0 0 1.6-2.7L14 8.5V2"/><path d="M7.5 14.5h9"/>',
+  barChart:'<path d="M4 20V10M12 20V4M20 20v-7"/><path d="M2.5 20h19"/>',
+  settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H4a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.9.3H10a1.7 1.7 0 0 0 1-1.6V4a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.9V10a1.7 1.7 0 0 0 1.6 1H20a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.6 1Z"/>',
+  building:'<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 8h1M14 8h1M9 12h1M14 12h1M9 16h1M14 16h1M10 21v-3h4v3"/>',
+  plusCircle:'<circle cx="12" cy="12" r="9.5"/><path d="M12 8v8M8 12h8"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  edit:'<path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-4-4L4 16v4Z"/><path d="M13.5 7 17 10.5"/>',
+  trash:'<path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m3 0-.8 12.1a1.5 1.5 0 0 1-1.5 1.4H7.3a1.5 1.5 0 0 1-1.5-1.4L5 7"/><path d="M10 11v6M14 11v6"/>',
+  download:'<path d="M12 3v13M7 11l5 5 5-5"/><path d="M4 20h16"/>',
+  x:'<path d="M6 6l12 12M18 6 6 18"/>',
+  check:'<path d="M5 12.5 10 17 19 7"/>',
+  checkCircle:'<circle cx="12" cy="12" r="9.5"/><path d="M7.5 12.5 10.5 15.5 16.5 9"/>',
+  alertTriangle:'<path d="M10.3 3.9 1.9 18a1.5 1.5 0 0 0 1.3 2.3h17.6a1.5 1.5 0 0 0 1.3-2.3L13.7 3.9a1.5 1.5 0 0 0-2.6 0Z"/><path d="M12 9.5v4M12 17h.01"/>',
+  chevronRight:'<path d="M9 6l6 6-6 6"/>',
+  search:'<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
+  arrowLeft:'<path d="M19 12H5M11 6l-6 6 6 6"/>',
+  info:'<circle cx="12" cy="12" r="9.5"/><path d="M12 11v6M12 7.5h.01"/>',
+  refresh:'<path d="M20 11A8 8 0 0 0 6 6.3L3.5 8.5"/><path d="M4 4v5h5"/><path d="M4 13a8 8 0 0 0 14 4.7l2.5-2.2"/><path d="M20 20v-5h-5"/>',
+  eye:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+  key:'<circle cx="8" cy="15.5" r="4.5"/><path d="m11.5 12 8-8M16 5.5 18.5 8M19.5 4.5 22 7"/>',
+  power:'<path d="M12 3v8"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/>',
+  inbox:'<path d="M4 12h4.5l1.5 3h4l1.5-3H20"/><path d="M6 5h12l2 7v6a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18v-6l2-7Z"/>',
+  database:'<ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5V12c0 1.7 3.6 3 8 3s8-1.3 8-3V5.5"/><path d="M4 12v6.5c0 1.7 3.6 3 8 3s8-1.3 8-3V12"/>',
+  percent:'<path d="M5 19 19 5"/><circle cx="7" cy="7" r="2.3"/><circle cx="17" cy="17" r="2.3"/>',
+};
+function icon(name, cls) {
+  const inner = ICONS[name] || ICONS.info;
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${cls ? ` class="${cls}"` : ''}>${inner}</svg>`;
+}
+
+/* ---- SECTION: UTILITIES ---- */
+const CURRENCY_SYMBOL = '₹'; // change to '৳', '$', etc. to suit your locale
+const $ = (sel, root) => (root || document).querySelector(sel);
+const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
+
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+function toNum(v) { const n = parseFloat(String(v).replace(/[, ৳₹$]/g, '')); return isNaN(n) ? 0 : n; }
+function formatMoney(v) { return CURRENCY_SYMBOL + toNum(v).toLocaleString('en-US', { maximumFractionDigits: 0 }); }
+function formatNum(v) { return toNum(v).toLocaleString('en-US'); }
+function formatPct(v) { return (isFinite(v) ? v : 0).toFixed(2) + '%'; }
+function normalizeUHID(v) { return (v || '').toString().replace(/\s+/g, '').toUpperCase(); }
+function normalizeForCompare(v) { return (v || '').toString().toLowerCase().trim().replace(/\s+/g, ' '); }
+function todayISO() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+function monthKeyFromDate(iso) { return iso ? iso.slice(0,7) : ''; }
+function monthLabel(monthKey) { if(!monthKey) return '—'; const [y,m]=monthKey.split('-'); return MONTH_NAMES[parseInt(m,10)-1] + "'" + y.slice(2); }
+function addDaysISO(iso, days) { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + days); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+function formatDateDisplay(iso) { if(!iso) return '—'; const d = new Date(iso + 'T00:00:00'); if (isNaN(d)) return iso; return String(d.getDate()).padStart(2,'0') + ' ' + MONTH_NAMES[d.getMonth()] + ' ' + d.getFullYear(); }
+function validateEmail(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
+function debounce(fn, wait) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), wait); }; }
+
+// Flexible date parser: handles Date objects, Excel serials, and common string formats -> 'YYYY-MM-DD' or null
+function parseFlexibleDate(value) {
+  if (value === null || value === undefined || value === '') return null;
+  // SheetJS (cellDates:true) always hands back UTC-anchored Date objects, regardless of
+  // whether the source cell was a pure date or a date+time — reading it with local getters
+  // can silently shift the day depending on the browser's timezone, so use UTC getters here.
+  if (value instanceof Date && !isNaN(value)) return isoFromParts(value.getUTCFullYear(), value.getUTCMonth()+1, value.getUTCDate());
+  if (typeof value === 'number') { // Excel serial date (a fractional part, if any, is just time-of-day and is ignored below)
+    const epoch = new Date(Date.UTC(1899, 11, 30));
+    const d = new Date(epoch.getTime() + value * 86400000);
+    return isoFromParts(d.getUTCFullYear(), d.getUTCMonth()+1, d.getUTCDate());
+  }
+  let s = String(value).trim();
+  // Drop a merged time-of-day so "15-01-2026 14:30:00", "2026-01-15T14:30:00Z", and
+  // "15/01/2026 2:30 PM" all reduce to just their date portion before matching.
+  s = s.replace(/[T\s]\d{1,2}:\d{2}(:\d{2})?(\.\d+)?\s*(AM|PM|am|pm)?.*$/, '').trim();
+  let m;
+  if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return isoFromParts(+m[1], +m[2], +m[3]);
+  if ((m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/))) {
+    const a = +m[1], b = +m[2];
+    if (a > 12) return isoFromParts(+m[3], b, a); // DD-MM-YYYY
+    return isoFromParts(+m[3], a, b); // ambiguous -> assume DD-MM-YYYY (common outside US); adjust in Settings if needed
+  }
+  if ((m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})$/))) return isoFromParts(2000 + (+m[3]), +m[2] > 12 ? +m[1] : +m[2], +m[2] > 12 ? +m[2] : +m[1]);
+  const d = new Date(s);
+  if (!isNaN(d)) return isoFromParts(d.getFullYear(), d.getMonth()+1, d.getDate());
+  return null;
+}
+function isoFromParts(y, m, d) { if(!y||!m||!d) return null; return y + '-' + String(m).padStart(2,'0') + '-' + String(d).padStart(2,'0'); }
+function isValidISODate(v) { return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v); }
+
+function animateCountUp(el, target, opts) {
+  const isMoney = opts && opts.money, isPct = opts && opts.pct;
+  const start = 0, dur = 900, t0 = performance.now();
+  function frame(t) {
+    const p = Math.min(1, (t - t0) / dur);
+    const eased = 1 - Math.pow(1 - p, 3);
+    const val = start + (target - start) * eased;
+    el.textContent = isMoney ? formatMoney(val) : isPct ? formatPct(val) : formatNum(Math.round(val));
+    if (p < 1) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ---- Toasts ---- */
+function showToast(message, type) {
+  type = type || 'info';
+  const stack = $('#toast-stack');
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  const iconName = type === 'success' ? 'checkCircle' : type === 'error' ? 'alertTriangle' : 'info';
+  t.innerHTML = icon(iconName) + '<span>' + escapeHtml(message) + '</span>';
+  stack.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateX(30px)'; t.style.transition = 'all .25s ease'; setTimeout(() => t.remove(), 260); }, 3600);
+}
+
+/* ---- Modal ---- */
+function openModal(innerHtml, opts) {
+  opts = opts || {};
+  $('#modal-slot').innerHTML = `<div class="modal-box${opts.wide ? ' wide' : ''}">${innerHtml}</div>`;
+  $('#modal-root').classList.add('show');
+}
+function closeModal() { $('#modal-root').classList.remove('show'); $('#modal-slot').innerHTML = ''; }
+$('#modal-backdrop').addEventListener('click', closeModal);
+
+function confirmDialog(title, message, confirmLabel, danger) {
+  return new Promise((resolve) => {
+    openModal(`
+      <div class="modal-head"><h3>${escapeHtml(title)}</h3><button class="icon-btn" id="cd-x">${icon('x')}</button></div>
+      <div class="modal-body"><p style="font-size:14px;color:var(--slate-600);line-height:1.55;">${escapeHtml(message)}</p></div>
+      <div class="modal-foot"><button class="btn btn-ghost" id="cd-cancel">Cancel</button><button class="btn ${danger ? 'btn-danger-solid' : 'btn-primary'}" id="cd-ok">${escapeHtml(confirmLabel || 'Confirm')}</button></div>
+    `);
+    const done = (v) => { closeModal(); resolve(v); };
+    $('#cd-x').onclick = () => done(false);
+    $('#cd-cancel').onclick = () => done(false);
+    $('#cd-ok').onclick = () => done(true);
+  });
+}
+
+function setBtnLoading(btn, loading, labelWhenDone) {
+  if (loading) { btn.dataset.label = btn.innerHTML; btn.innerHTML = '<span class="loader-ring" style="border-color:rgba(255,255,255,.4);border-top-color:#fff;width:16px;height:16px;"></span>'; btn.disabled = true; }
+  else { btn.innerHTML = labelWhenDone || btn.dataset.label || btn.innerHTML; btn.disabled = false; }
+}
+
+function friendlyError(e) {
+  const code = (e && e.code) || '';
+  const map = {
+    'auth/invalid-email': 'That email address looks invalid.',
+    'auth/user-not-found': 'No account found with that email.',
+    'auth/wrong-password': 'Incorrect password.',
+    'auth/invalid-credential': 'Incorrect email or password.',
+    'auth/email-already-in-use': 'An account with that email already exists.',
+    'auth/weak-password': 'Password should be at least 6 characters.',
+    'auth/too-many-requests': 'Too many attempts. Please wait a moment and try again.',
+    'permission-denied': "You don't have permission to do that.",
+  };
+  return map[code] || (e && e.message ? e.message.replace('Firebase: ', '').replace(/\(auth\/.*\)/,'') : 'Something went wrong.');
+}
+
+/* ---- SECTION: AUTH ---- */
+function showLoginScreen() {
+  $('#global-loader').classList.add('hidden');
+  $('#app-shell').classList.add('hidden');
+  $('#login-screen').classList.remove('hidden');
+  resetLoginForm();
+}
+function resetLoginForm() {
+  const btn = $('#login-submit-btn');
+  btn.disabled = false;
+  btn.innerHTML = '<span class="btn-label">Sign In</span>';
+  $('#login-error').style.display = 'none';
+  $('#login-password').value = '';
+}
+function showAppShell() {
+  $('#global-loader').classList.add('hidden');
+  $('#login-screen').classList.add('hidden');
+  $('#app-shell').classList.remove('hidden');
+}
+function showConfigNeeded() {
+  $('#global-loader').innerHTML = `
+    <div style="max-width:440px;text-align:center;padding:0 24px;">
+      <div class="pulse-logo" style="justify-content:center;margin-bottom:18px;">
+        <div class="mark"><svg viewBox="0 0 24 24"><path d="M2 13 L7 13 L9.5 6 L13 20 L15.5 10 L17.5 13 L22 13"/></svg></div>
+        <span class="wordmark">CXDX</span>
+      </div>
+      <h3 style="font-family:var(--font-display);font-size:16.5px;margin-bottom:10px;">Firebase setup needed</h3>
+      <p style="font-size:13.5px;color:var(--slate-500);line-height:1.65;">
+        Open <b class="mono">index.html</b>, find the <b class="mono">firebaseConfig</b> object near the top of the
+        script section, and paste in your Firebase project's config keys. Full setup steps are in
+        <b class="mono">README.md</b>.
+      </p>
+    </div>`;
+}
+
+async function loadCompanyContext(companyId) {
+  const snap = await getDoc(doc(db, 'companies', companyId));
+  if (!snap.exists()) throw new Error('Company not found. Contact your Super Admin.');
+  const data = snap.data();
+  state.companyId = companyId;
+  state.companyName = data.name;
+  state.companyActive = data.active !== false;
+  state.matchingConfig = Object.assign({}, DEFAULT_MATCHING_CONFIG, data.matchingConfig || {}, { billingMap: Object.assign({}, DEFAULT_MATCHING_CONFIG.billingMap, (data.matchingConfig || {}).billingMap || {}) });
+  await loadMasters();
+}
+
+async function loadUserProfile(fbUser) {
+  const snap = await getDoc(doc(db, 'users', fbUser.uid));
+  if (!snap.exists()) throw new Error('NO_PROFILE');
+  const data = snap.data();
+  return { uid: fbUser.uid, email: fbUser.email, name: data.name || fbUser.email, role: data.role, companyId: data.companyId || null };
+}
+
+function beginSession() {
+  onAuthStateChanged(auth, async (fbUser) => {
+    if (!fbUser) { state.user = null; showLoginScreen(); return; }
+    try {
+      const profile = await loadUserProfile(fbUser);
+      state.user = profile;
+      state.isSuperAdmin = profile.role === 'superadmin';
+      if (profile.role === 'admin') {
+        if (!profile.companyId) throw new Error('Your account is not linked to a company yet. Contact your Super Admin.');
+        await loadCompanyContext(profile.companyId);
+      }
+      renderShellChrome();
+      showAppShell();
+      navigateTo(state.isSuperAdmin ? 'sa-companies' : 'dashboard');
+    } catch (err) {
+      console.error(err);
+      showToast(err.message === 'NO_PROFILE' ? 'No profile found for this account. Contact your Super Admin.' : friendlyError(err), 'error');
+      await signOut(auth);
+      showLoginScreen();
+    }
+  });
+}
+
+$('#login-card').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = $('#login-email').value.trim();
+  const password = $('#login-password').value;
+  const btn = $('#login-submit-btn');
+  const errBox = $('#login-error');
+  errBox.style.display = 'none';
+  setBtnLoading(btn, true);
+  try {
+    await signInWithEmailAndPassword(auth, email, password);
+  } catch (err) {
+    errBox.textContent = friendlyError(err);
+    errBox.style.display = 'block';
+    setBtnLoading(btn, false, '<span class="btn-label">Sign In</span>');
+  }
+});
+
+$('#logout-btn').addEventListener('click', async () => {
+  await signOut(auth);
+  state.companyId = null; state.companyName = ''; state.user = null;
+  showLoginScreen();
+});
+
+/* ---- SECTION: NAVIGATION / SHELL ---- */
+const VIEW_RENDERERS = {};
+const VIEW_TITLES = {
+  'sa-companies': ['Companies', 'Create and manage company accounts'],
+  'dashboard': ['Dashboard', 'Conversion overview'],
+  'prescriptions': ['Prescriptions', 'Entry and records'],
+  'rx-form': ['New Prescription', 'Add a prescription entry'],
+  'billing': ['Billing Dumps', 'Monthly raw billing uploads'],
+  'masters': ['Masters', 'Doctors, tests and agents'],
+  'reports': ['Reports', 'Date-wise and monthly summaries'],
+  'settings': ['Settings', 'Matching rules for this company'],
+};
+const NAV_ITEMS_ADMIN = [
+  { id: 'dashboard', label: 'Dashboard', iconName: 'home' },
+  { id: 'prescriptions', label: 'Prescriptions', iconName: 'fileText' },
+  { id: 'billing', label: 'Billing Dumps', iconName: 'uploadCloud' },
+  { id: 'masters', label: 'Masters', iconName: 'database' },
+  { id: 'reports', label: 'Reports', iconName: 'barChart' },
+  { id: 'settings', label: 'Settings', iconName: 'settings' },
+];
+const NAV_ITEMS_SUPERADMIN = [ { id: 'sa-companies', label: 'Companies', iconName: 'building' } ];
+const NAV_ALIAS = { 'rx-form': 'prescriptions' }; // sub-pages that should still highlight a parent nav item
+
+function renderShellChrome() {
+  $('#user-avatar').textContent = (state.user.name || '?').trim().slice(0,1).toUpperCase();
+  $('#user-name').textContent = state.user.name;
+  $('#user-role').innerHTML = `<span class="role-tag ${state.user.role}">${state.user.role === 'superadmin' ? 'Super Admin' : 'Admin'}</span>`;
+  renderSideNav();
+  renderCompanyChip();
+}
+
+function renderSideNav() {
+  const items = (state.isSuperAdmin && !state.companyId) ? NAV_ITEMS_SUPERADMIN : NAV_ITEMS_ADMIN;
+  $('#side-nav').innerHTML = items.map(it => `<div class="nav-item" data-view="${it.id}">${icon(it.iconName)}<span>${it.label}</span></div>`).join('');
+  $$('#side-nav .nav-item').forEach(elm => elm.addEventListener('click', () => { navigateTo(elm.dataset.view); closeSidebarMobile(); }));
+}
+
+function renderCompanyChip() {
+  const box = $('#sidebar-company-chip');
+  if (!state.companyId) { box.innerHTML = ''; return; }
+  box.innerHTML = `
+    <div class="company-chip">${icon('building')}<div><b>${escapeHtml(state.companyName || '—')}</b>${state.isSuperAdmin ? 'Super Admin session' : 'Company workspace'}</div></div>
+    ${state.isSuperAdmin ? `<div style="margin:-8px 20px 14px;"><button class="btn btn-ghost btn-sm" id="exit-company-btn" style="width:100%;justify-content:flex-start;color:rgba(255,255,255,.7);">${icon('arrowLeft')} Exit to Companies</button></div>` : ''}
+  `;
+  if (state.isSuperAdmin) {
+    const btn = $('#exit-company-btn');
+    if (btn) btn.addEventListener('click', exitCompany);
+  }
+}
+
+async function navigateTo(view, params) {
+  state.viewParams = params || {};
+  $$('#side-nav .nav-item').forEach(elm => elm.classList.toggle('active', elm.dataset.view === (NAV_ALIAS[view] || view)));
+  const titles = VIEW_TITLES[view] || ['CXDX', ''];
+  $('#topbar-title').textContent = titles[0];
+  $('#topbar-sub').textContent = titles[1];
+  $('#topbar-actions').innerHTML = '';
+  const content = $('#content');
+  content.innerHTML = `<div class="u-center" style="padding:100px 0;"><div class="loader-ring"></div></div>`;
+  try {
+    const renderer = VIEW_RENDERERS[view];
+    if (renderer) await renderer(content, state.viewParams);
+    else content.innerHTML = `<div class="empty-state">${icon('inbox')}<h4>Nothing here yet</h4></div>`;
+  } catch (err) {
+    console.error(err);
+    content.innerHTML = `<div class="empty-state">${icon('alertTriangle')}<h4>Something went wrong</h4><p>${escapeHtml(friendlyError(err))}</p></div>`;
+  }
+}
+
+function closeSidebarMobile() { $('#sidebar').classList.remove('open'); $('#sidebar-scrim').classList.remove('show'); }
+$('#menu-toggle').addEventListener('click', () => { $('#sidebar').classList.add('open'); $('#sidebar-scrim').classList.add('show'); });
+$('#sidebar-scrim').addEventListener('click', closeSidebarMobile);
+
+/* ---- SECTION: SUPER ADMIN VIEWS ---- */
+async function renderCompaniesListView(content) {
+  $('#topbar-actions').innerHTML = `<button class="btn btn-primary" id="new-company-btn">${icon('plusCircle')} New Company</button>`;
+  $('#new-company-btn').addEventListener('click', openCreateCompanyModal);
+  content.innerHTML = `<div class="view" id="companies-grid"><div class="u-center" style="padding:70px 0;"><div class="loader-ring"></div></div></div>`;
+
+  const snap = await getDocs(query(collection(db, 'companies'), orderBy('createdAt', 'desc')));
+  const companies = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const grid = $('#companies-grid');
+  if (!companies.length) {
+    grid.innerHTML = `<div class="empty-state">${icon('building')}<h4>No companies yet</h4><p>Create your first company account to start tracking prescriptions and conversion.</p></div>`;
+    return;
+  }
+  grid.innerHTML = `<div class="stat-grid" style="grid-template-columns:repeat(auto-fill,minmax(270px,1fr));">${companies.map(c => companyCardHtml(c)).join('')}</div>`;
+  companies.forEach(c => {
+    $('#enter-' + c.id).addEventListener('click', () => enterCompany(c.id));
+    $('#manage-' + c.id).addEventListener('click', () => openManageCompanyModal(c.id));
+    getCountFromServer(collection(db, 'companies', c.id, 'prescriptions')).then(res => {
+      const el = document.getElementById('count-' + c.id);
+      if (el) el.textContent = formatNum(res.data().count) + ' prescription rows';
+    }).catch(() => {});
+  });
+}
+function companyCardHtml(c) {
+  return `<div class="stat-card accent-teal" style="cursor:default;">
+    <div class="u-between" style="align-items:flex-start;">
+      <div style="min-width:0;">
+        <div class="lbl" style="text-transform:none;font-size:14.5px;color:var(--ink-900);font-family:var(--font-display);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(c.name)}</div>
+        <div id="count-${c.id}" style="font-size:12px;color:var(--slate-400);margin-top:5px;">loading…</div>
+      </div>
+      <span class="badge ${c.active === false ? 'inactive' : 'active'}">${c.active === false ? 'Inactive' : 'Active'}</span>
+    </div>
+    <div class="u-flex u-gap-8" style="margin-top:16px;">
+      <button class="btn btn-secondary btn-sm" id="enter-${c.id}" style="flex:1;">${icon('eye')} Open</button>
+      <button class="btn btn-ghost btn-sm" id="manage-${c.id}" style="flex:1;">${icon('settings')} Manage</button>
+    </div>
+  </div>`;
+}
+
+function openCreateCompanyModal() {
+  openModal(`
+    <div class="modal-head"><h3>New Company</h3><button class="icon-btn" id="m-x">${icon('x')}</button></div>
+    <div class="modal-body">
+      <div class="field-wrap" style="margin-bottom:16px;"><label>Company Name <span class="req">*</span></label><input type="text" id="nc-name" placeholder="e.g. Sunrise Diagnostics"></div>
+      <div class="divider"></div>
+      <span class="section-label">First admin account (optional — add later if you prefer)</span>
+      <div class="form-grid">
+        <div class="field-wrap"><label>Admin Name</label><input type="text" id="nc-admin-name" placeholder="Full name"></div>
+        <div class="field-wrap"><label>Admin Email</label><input type="email" id="nc-admin-email" placeholder="admin@company.com"></div>
+        <div class="field-wrap span-2"><label>Temporary Password</label><input type="text" id="nc-admin-pass" placeholder="Min 6 characters"></div>
+      </div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-ghost" id="m-cancel">Cancel</button><button class="btn btn-primary" id="nc-save">${icon('plusCircle')} Create Company</button></div>
+  `);
+  $('#m-x').onclick = closeModal; $('#m-cancel').onclick = closeModal;
+  $('#nc-save').onclick = async () => {
+    const name = $('#nc-name').value.trim();
+    const aName = $('#nc-admin-name').value.trim(), aEmail = $('#nc-admin-email').value.trim(), aPass = $('#nc-admin-pass').value;
+    if (!name) { showToast('Company name is required', 'error'); return; }
+    if ((aEmail || aName || aPass) && (!aName || !aEmail || !aPass)) { showToast('Fill in all admin fields, or leave all three blank', 'error'); return; }
+    if (aEmail && !validateEmail(aEmail)) { showToast('Admin email looks invalid', 'error'); return; }
+    if (aPass && aPass.length < 6) { showToast('Password must be at least 6 characters', 'error'); return; }
+    const btn = $('#nc-save'); setBtnLoading(btn, true);
+    try {
+      const companyId = await createCompany(name);
+      if (aEmail) await createCompanyAdmin(companyId, aName, aEmail, aPass);
+      showToast('Company created', 'success');
+      closeModal();
+      navigateTo('sa-companies');
+    } catch (err) {
+      showToast(friendlyError(err), 'error');
+      setBtnLoading(btn, false, `${icon('plusCircle')} Create Company`);
+    }
+  };
+}
+async function createCompany(name) {
+  const ref = await addDoc(collection(db, 'companies'), { name, active: true, createdAt: serverTimestamp(), matchingConfig: DEFAULT_MATCHING_CONFIG });
+  return ref.id;
+}
+async function createCompanyAdmin(companyId, name, email, password) {
+  const sAuth = getSecondaryAuth();
+  const cred = await createUserWithEmailAndPassword(sAuth, email, password);
+  const newUid = cred.user.uid;
+  await signOut(sAuth);
+  await setDoc(doc(db, 'users', newUid), { name, email, role: 'admin', companyId, createdAt: serverTimestamp() });
+  return newUid;
+}
+
+async function openManageCompanyModal(companyId) {
+  openModal(`<div class="modal-head"><h3>Manage Company</h3><button class="icon-btn" id="m-x">${icon('x')}</button></div><div class="modal-body" id="mc-body"><div class="u-center" style="padding:50px 0;"><div class="loader-ring"></div></div></div>`, { wide: true });
+  $('#m-x').onclick = closeModal;
+  const snap = await getDoc(doc(db, 'companies', companyId));
+  if (!snap.exists()) { $('#mc-body').innerHTML = 'Company not found.'; return; }
+  const c = snap.data();
+  const usersSnap = await getDocs(query(collection(db, 'users'), where('companyId', '==', companyId)));
+  const admins = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  $('#mc-body').innerHTML = `
+    <div class="field-wrap" style="margin-bottom:14px;"><label>Company Name</label><input type="text" id="mc-name" value="${escapeHtml(c.name)}"></div>
+    <div class="u-between" style="margin-bottom:16px;">
+      <span style="font-size:13px;color:var(--slate-600);">Status:&nbsp; <span class="badge ${c.active === false ? 'inactive' : 'active'}">${c.active === false ? 'Inactive' : 'Active'}</span></span>
+      <div class="u-flex u-gap-8">
+        <button class="btn btn-secondary btn-sm" id="mc-toggle-active">${icon('power')} ${c.active === false ? 'Reactivate' : 'Deactivate'}</button>
+        <button class="btn btn-primary btn-sm" id="mc-save-name">${icon('check')} Save Name</button>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div class="u-between" style="margin-bottom:10px;"><span class="section-label" style="margin-bottom:0;">Admin Users (${admins.length})</span><button class="btn btn-secondary btn-sm" id="mc-add-admin">${icon('plus')} Add Admin</button></div>
+    <div id="mc-admins-list">${admins.length ? admins.map(a => adminRowHtml(a)).join('') : `<p class="u-muted" style="font-size:13px;padding:8px 0;">No admins yet — add one so this company can sign in.</p>`}</div>
+    <div class="divider"></div>
+    <span class="section-label" style="color:var(--red-600);">Danger Zone</span>
+    <button class="btn btn-danger btn-sm" id="mc-delete">${icon('trash')} Permanently Delete Company</button>
+  `;
+  $('#mc-save-name').onclick = async () => {
+    const name = $('#mc-name').value.trim();
+    if (!name) { showToast('Name required', 'error'); return; }
+    await updateDoc(doc(db, 'companies', companyId), { name });
+    showToast('Company updated', 'success'); closeModal(); navigateTo('sa-companies');
+  };
+  $('#mc-toggle-active').onclick = async () => {
+    await updateDoc(doc(db, 'companies', companyId), { active: c.active === false ? true : false });
+    showToast(c.active === false ? 'Company reactivated' : 'Company deactivated', 'success');
+    closeModal(); navigateTo('sa-companies');
+  };
+  $('#mc-add-admin').onclick = () => openAddAdminModal(companyId);
+  admins.forEach(a => {
+    const btn = document.getElementById('reset-' + a.id);
+    if (btn) btn.addEventListener('click', async () => {
+      try { await sendPasswordResetEmail(auth, a.email); showToast('Password reset email sent to ' + a.email, 'success'); }
+      catch (e) { showToast(friendlyError(e), 'error'); }
+    });
+  });
+  $('#mc-delete').onclick = async () => {
+    const ok = await confirmDialog('Delete this company?', `This permanently deletes "${c.name}" and all of its prescriptions, billing dumps, and master data. This cannot be undone.`, 'Delete Permanently', true);
+    if (!ok) return;
+    closeModal();
+    showToast('Deleting company…', 'info');
+    try { await deleteCompanyCascade(companyId); showToast('Company deleted', 'success'); navigateTo('sa-companies'); }
+    catch (e) { showToast(friendlyError(e), 'error'); }
+  };
+}
+function adminRowHtml(a) {
+  return `<div class="u-between" style="padding:10px 0;border-bottom:1px solid var(--line-100);">
+    <div style="min-width:0;"><div style="font-size:13.5px;font-weight:600;">${escapeHtml(a.name)}</div><div style="font-size:12px;color:var(--slate-500);">${escapeHtml(a.email)}</div></div>
+    <button class="btn btn-ghost btn-sm" id="reset-${a.id}">${icon('key')} Reset Password</button>
+  </div>`;
+}
+function openAddAdminModal(companyId) {
+  openModal(`
+    <div class="modal-head"><h3>Add Admin</h3><button class="icon-btn" id="m-x">${icon('x')}</button></div>
+    <div class="modal-body">
+      <div class="field-wrap" style="margin-bottom:14px;"><label>Full Name</label><input type="text" id="aa-name"></div>
+      <div class="field-wrap" style="margin-bottom:14px;"><label>Email</label><input type="email" id="aa-email"></div>
+      <div class="field-wrap"><label>Temporary Password</label><input type="text" id="aa-pass" placeholder="Min 6 characters"></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-ghost" id="m-cancel">Cancel</button><button class="btn btn-primary" id="aa-save">${icon('plus')} Add Admin</button></div>
+  `);
+  $('#m-x').onclick = closeModal; $('#m-cancel').onclick = closeModal;
+  $('#aa-save').onclick = async () => {
+    const name = $('#aa-name').value.trim(), email = $('#aa-email').value.trim(), pass = $('#aa-pass').value;
+    if (!name || !email || !pass) { showToast('All fields are required', 'error'); return; }
+    if (!validateEmail(email)) { showToast('Email looks invalid', 'error'); return; }
+    if (pass.length < 6) { showToast('Password must be at least 6 characters', 'error'); return; }
+    const btn = $('#aa-save'); setBtnLoading(btn, true);
+    try { await createCompanyAdmin(companyId, name, email, pass); showToast('Admin added', 'success'); closeModal(); openManageCompanyModal(companyId); }
+    catch (err) { showToast(friendlyError(err), 'error'); setBtnLoading(btn, false, `${icon('plus')} Add Admin`); }
+  };
+}
+
+async function enterCompany(companyId) {
+  try { await loadCompanyContext(companyId); renderShellChrome(); navigateTo('dashboard'); }
+  catch (err) { showToast(friendlyError(err), 'error'); }
+}
+function exitCompany() {
+  state.companyId = null; state.companyName = ''; state.matchingConfig = null;
+  state.doctors = []; state.tests = []; state.agents = [];
+  renderShellChrome();
+  navigateTo('sa-companies');
+}
+
+async function deleteAllInCollection(colRef) {
+  const snap = await getDocs(colRef);
+  let batch = writeBatch(db), n = 0;
+  for (const d of snap.docs) { batch.delete(d.ref); n++; if (n === 450) { await batch.commit(); batch = writeBatch(db); n = 0; } }
+  if (n > 0) await batch.commit();
+  return snap.docs;
+}
+async function deleteCompanyCascade(companyId) {
+  const dumpsSnap = await getDocs(collection(db, 'companies', companyId, 'billingDumps'));
+  for (const dDoc of dumpsSnap.docs) await deleteAllInCollection(collection(db, 'companies', companyId, 'billingDumps', dDoc.id, 'rows'));
+  await deleteAllInCollection(collection(db, 'companies', companyId, 'billingDumps'));
+  await deleteAllInCollection(collection(db, 'companies', companyId, 'prescriptions'));
+  await deleteAllInCollection(collection(db, 'companies', companyId, 'doctors'));
+  await deleteAllInCollection(collection(db, 'companies', companyId, 'tests'));
+  await deleteAllInCollection(collection(db, 'companies', companyId, 'agents'));
+  const usersSnap = await getDocs(query(collection(db, 'users'), where('companyId', '==', companyId)));
+  if (usersSnap.docs.length) { const b = writeBatch(db); usersSnap.docs.forEach(d => b.delete(d.ref)); await b.commit(); }
+  await deleteDoc(doc(db, 'companies', companyId));
+  // Note: the linked Firebase Auth sign-in accounts themselves are not deletable from the client
+  // SDK for security reasons — remove them from Firebase Console → Authentication if desired.
+}
+
+VIEW_RENDERERS['sa-companies'] = renderCompaniesListView;
+
+/* ---- SECTION: ADMIN DASHBOARD ---- */
+let dashBarChartInstance = null, dashDonutChartInstance = null;
+
+async function renderDashboardView(content) {
+  content.innerHTML = `<div class="u-center" style="padding:100px 0;"><div class="loader-ring"></div></div>`;
+  if (!state.companyActive) {
+    content.innerHTML = `<div class="empty-state">${icon('alertTriangle')}<h4>Company deactivated</h4><p>This company account is currently inactive. Contact your Super Admin to reactivate it.</p></div>`;
+    return;
+  }
+  const rows = await loadAllPrescriptions();
+  const stats = computeSummaryStats(rows);
+  const monthly = groupByMonth(rows);
+
+  content.innerHTML = `
+    <div class="view">
+      ${rows.length === 0 ? `<div class="card card-pad" style="margin-bottom:18px;background:var(--teal-50);border-color:var(--teal-100);display:flex;gap:10px;align-items:center;color:var(--teal-700);font-size:13.5px;font-weight:500;">${icon('info')} No prescriptions yet — add your first entry or import historical data to see your conversion overview.</div>` : ''}
+      <div class="stat-grid">
+        <div class="stat-card accent-ink"><div class="lbl">${icon('fileText')} Total Prescriptions</div><div class="val" id="cu-1">0</div></div>
+        <div class="stat-card accent-teal"><div class="lbl">${icon('flask')} Total Test Given</div><div class="val" id="cu-2">0</div></div>
+        <div class="stat-card accent-green"><div class="lbl">${icon('checkCircle')} Converted Tests</div><div class="val c-green" id="cu-3">0</div></div>
+        <div class="stat-card accent-amber"><div class="lbl">${icon('alertTriangle')} Leakage Tests</div><div class="val c-amber" id="cu-4">0</div></div>
+      </div>
+      <div class="stat-grid">
+        <div class="stat-card accent-ink"><div class="lbl">Prescription Value</div><div class="val" id="cu-5">${CURRENCY_SYMBOL}0</div></div>
+        <div class="stat-card accent-green"><div class="lbl">${icon('checkCircle')} Conversion Value</div><div class="val c-green" id="cu-6">${CURRENCY_SYMBOL}0</div></div>
+        <div class="stat-card accent-amber"><div class="lbl">${icon('alertTriangle')} Leakage Value</div><div class="val c-amber" id="cu-7">${CURRENCY_SYMBOL}0</div></div>
+        <div class="stat-card accent-teal"><div class="lbl">${icon('percent')} Conversion Rate</div><div class="val" id="cu-8">0%</div>
+          <div class="progress-track" style="margin-top:10px;"><div class="progress-fill" id="cu-8-bar" style="width:0%;"></div></div>
+        </div>
+      </div>
+      <div class="form-grid" style="grid-template-columns:1.3fr 1fr;align-items:stretch;">
+        <div class="card card-pad">
+          <h3 style="font-family:var(--font-display);font-weight:600;font-size:15px;margin-bottom:14px;">Conversion vs Leakage by Month</h3>
+          <canvas id="dash-bar-chart" height="210"></canvas>
+        </div>
+        <div class="card card-pad">
+          <h3 style="font-family:var(--font-display);font-weight:600;font-size:15px;margin-bottom:14px;">Value Split</h3>
+          <canvas id="dash-donut-chart" height="210"></canvas>
+          <div class="chart-legend"><span class="li"><span class="dot" style="background:var(--green-500);"></span>Converted</span><span class="li"><span class="dot" style="background:var(--amber-500);"></span>Leakage</span></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:20px;">
+        <div class="card-head"><h3>Quick Actions</h3></div>
+        <div class="card-pad u-flex u-gap-12" style="flex-wrap:wrap;">
+          <button class="btn btn-primary" id="qa-entry">${icon('plusCircle')} New Prescription</button>
+          <button class="btn btn-secondary" id="qa-billing">${icon('uploadCloud')} Upload Billing Dump</button>
+          <button class="btn btn-secondary" id="qa-match">${icon('refresh')} Re-run Matching</button>
+          <button class="btn btn-secondary" id="qa-report">${icon('barChart')} View Reports</button>
+        </div>
+      </div>
+    </div>`;
+
+  animateCountUp($('#cu-1'), stats.totalPrescription);
+  animateCountUp($('#cu-2'), stats.totalTestGiven);
+  animateCountUp($('#cu-3'), stats.totalConversion);
+  animateCountUp($('#cu-4'), stats.totalLeakageCount);
+  animateCountUp($('#cu-5'), stats.prescriptionValue, { money: true });
+  animateCountUp($('#cu-6'), stats.conversionValue, { money: true });
+  animateCountUp($('#cu-7'), stats.leakageValue, { money: true });
+  animateCountUp($('#cu-8'), stats.conversionPct, { pct: true });
+  setTimeout(() => { $('#cu-8-bar').style.width = Math.min(100, stats.conversionPct) + '%'; }, 150);
+
+  $('#qa-entry').addEventListener('click', () => navigateTo('rx-form'));
+  $('#qa-billing').addEventListener('click', () => navigateTo('billing'));
+  $('#qa-match').addEventListener('click', async () => {
+    showToast('Running matching…', 'info');
+    const r = await runMatching();
+    showToast(`Matching complete — ${r.matchedCount} matched, ${r.leakageCount} leakage`, 'success');
+    navigateTo('dashboard');
+  });
+  $('#qa-report').addEventListener('click', () => navigateTo('reports'));
+
+  renderDashCharts(monthly, stats);
+}
+
+function renderDashCharts(monthly, stats) {
+  const months = Object.keys(monthly).filter(m => m !== 'unknown').sort().slice(-6);
+  if (dashBarChartInstance) dashBarChartInstance.destroy();
+  dashBarChartInstance = new Chart($('#dash-bar-chart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: months.map(monthLabel),
+      datasets: [
+        { label: 'Conversion', data: months.map(m => monthly[m].conversionValue), backgroundColor: '#1FAA6D', borderRadius: 6, maxBarThickness: 26 },
+        { label: 'Leakage', data: months.map(m => monthly[m].leakageValue), backgroundColor: '#DE7F1E', borderRadius: 6, maxBarThickness: 26 },
+      ]
+    },
+    options: {
+      responsive: true, animation: { duration: 900, easing: 'easeOutQuart' },
+      plugins: { legend: { display: months.length > 0, position: 'bottom', labels: { boxWidth: 10, font: { family: 'Inter', size: 11.5 } } } },
+      scales: { y: { ticks: { callback: v => formatNum(v) }, grid: { color: '#EAF1EF' } }, x: { grid: { display: false } } }
+    }
+  });
+  if (dashDonutChartInstance) dashDonutChartInstance.destroy();
+  dashDonutChartInstance = new Chart($('#dash-donut-chart').getContext('2d'), {
+    type: 'doughnut',
+    data: { labels: ['Converted', 'Leakage'], datasets: [{ data: [stats.conversionValue || 0, stats.leakageValue || 0], backgroundColor: ['#1FAA6D', '#DE7F1E'], borderWidth: 0 }] },
+    options: { responsive: true, cutout: '68%', animation: { duration: 900, easing: 'easeOutQuart' }, plugins: { legend: { display: false } } }
+  });
+}
+
+VIEW_RENDERERS['dashboard'] = renderDashboardView;
+
+/* ---- SECTION: PRESCRIPTIONS ---- */
+async function loadAllPrescriptions() {
+  const snap = await getDocs(query(collection(db, 'companies', state.companyId, 'prescriptions'), orderBy('date', 'desc')));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+function computeSummaryStats(rows) {
+  const distinctVisits = new Set(rows.map(r => (r.uhid || '') + '|' + (r.date || '')));
+  const testRows = rows.filter(r => r.matchStatus !== 'no-test');
+  const totalTestGiven = testRows.length;
+  const matched = testRows.filter(r => r.matchStatus === 'matched');
+  const prescriptionValue = testRows.reduce((s, r) => s + toNum(r.testAmount), 0);
+  const conversionValue = matched.reduce((s, r) => s + toNum(r.matchedAmount), 0);
+  const leakageRows = testRows.filter(r => r.matchStatus !== 'matched');
+  const leakageValue = leakageRows.reduce((s, r) => s + toNum(r.testAmount), 0);
+  return {
+    totalPrescription: distinctVisits.size, totalTestGiven, totalConversion: matched.length,
+    totalLeakageCount: totalTestGiven - matched.length, totalNoTestCount: rows.length - testRows.length,
+    prescriptionValue, conversionValue, leakageValue,
+    conversionPct: prescriptionValue > 0 ? (conversionValue / prescriptionValue) * 100 : 0,
+    leakagePct: prescriptionValue > 0 ? (leakageValue / prescriptionValue) * 100 : 0,
+  };
+}
+function groupByMonth(rows) {
+  const map = {};
+  rows.forEach(r => { const mk = r.monthKey || monthKeyFromDate(r.date) || 'unknown'; (map[mk] = map[mk] || { rows: [] }).rows.push(r); });
+  Object.keys(map).forEach(mk => Object.assign(map[mk], computeSummaryStats(map[mk].rows)));
+  return map;
+}
+
+let rxPage = 1;
+const RX_PAGE_SIZE = 50;
+let rxFilterStatus = 'all', rxSearchTerm = '', rxDateFrom = '', rxDateTo = '';
+
+async function renderPrescriptionsView(content) {
+  $('#topbar-actions').innerHTML = `
+    <button class="btn btn-secondary" id="rx-import-btn">${icon('uploadCloud')} Import</button>
+    <button class="btn btn-secondary" id="rx-template-btn">${icon('download')} Template</button>
+    <button class="btn btn-primary" id="rx-new-btn">${icon('plusCircle')} New Prescription</button>
+  `;
+  $('#rx-new-btn').addEventListener('click', () => navigateTo('rx-form'));
+  $('#rx-template-btn').addEventListener('click', downloadPrescriptionTemplate);
+  $('#rx-import-btn').addEventListener('click', openBulkImportPrescriptionsModal);
+
+  content.innerHTML = `<div class="view">
+    <div class="card">
+      <div class="table-toolbar">
+        <div class="search-box">${icon('search')}<input type="text" id="rx-search" placeholder="Search UHID or patient name…"></div>
+        <div class="pill-filters" id="rx-filter-pills">
+          <button class="pill active" data-f="all">All</button>
+          <button class="pill" data-f="matched">Matched</button>
+          <button class="pill" data-f="leakage">Leakage</button>
+          <button class="pill" data-f="no-test">No Test</button>
+        </div>
+        <div class="u-flex u-gap-8" style="align-items:center;">
+          <input type="date" id="rx-date-from" style="max-width:152px;" title="From date">
+          <span class="u-muted" style="font-size:12px;">–</span>
+          <input type="date" id="rx-date-to" style="max-width:152px;" title="To date">
+          <button class="icon-btn" id="rx-date-clear" title="Clear date filter">${icon('x')}</button>
+        </div>
+      </div>
+      <div class="table-wrap" id="rx-table-wrap"><div class="u-center" style="padding:60px 0;"><div class="loader-ring"></div></div></div>
+      <div class="u-between" id="rx-pager" style="padding:14px 18px;"></div>
+    </div>
+  </div>`;
+
+  rxFilterStatus = 'all'; rxSearchTerm = ''; rxDateFrom = ''; rxDateTo = '';
+  state.prescriptions = await loadAllPrescriptions();
+  rxPage = 1;
+  renderRxTable();
+  $('#rx-search').addEventListener('input', debounce((e) => { rxSearchTerm = e.target.value.trim().toUpperCase(); rxPage = 1; renderRxTable(); }, 250));
+  $$('#rx-filter-pills .pill').forEach(p => p.addEventListener('click', () => {
+    $$('#rx-filter-pills .pill').forEach(x => x.classList.remove('active')); p.classList.add('active');
+    rxFilterStatus = p.dataset.f; rxPage = 1; renderRxTable();
+  }));
+  $('#rx-date-from').addEventListener('change', (e) => { rxDateFrom = e.target.value; rxPage = 1; renderRxTable(); });
+  $('#rx-date-to').addEventListener('change', (e) => { rxDateTo = e.target.value; rxPage = 1; renderRxTable(); });
+  $('#rx-date-clear').addEventListener('click', () => {
+    rxDateFrom = ''; rxDateTo = '';
+    $('#rx-date-from').value = ''; $('#rx-date-to').value = '';
+    rxPage = 1; renderRxTable();
+  });
+}
+
+function statusBadgeHtml(r) {
+  if (r.matchStatus === 'matched') return `<span class="badge matched">${icon('check')} Completed</span>`;
+  if (r.matchStatus === 'no-test') return `<span class="badge neutral">No Test</span>`;
+  return `<span class="badge leakage">${icon('alertTriangle')} Leakage</span>`;
+}
+function statusLabel(r) {
+  if (r.matchStatus === 'matched') return 'Completed';
+  if (r.matchStatus === 'no-test') return 'No Test';
+  return 'Leakage';
+}
+function getFilteredRx() {
+  return state.prescriptions.filter(r => {
+    if (rxFilterStatus === 'matched' && r.matchStatus !== 'matched') return false;
+    if (rxFilterStatus === 'leakage' && r.matchStatus !== 'leakage') return false;
+    if (rxFilterStatus === 'no-test' && r.matchStatus !== 'no-test') return false;
+    if (rxDateFrom && r.date < rxDateFrom) return false;
+    if (rxDateTo && r.date > rxDateTo) return false;
+    if (rxSearchTerm) { const hay = ((r.uhid || '') + ' ' + (r.patientName || '')).toUpperCase(); if (!hay.includes(rxSearchTerm)) return false; }
+    return true;
+  });
+}
+function renderRxTable() {
+  const filtered = getFilteredRx();
+  const wrap = $('#rx-table-wrap');
+  if (!filtered.length) {
+    wrap.innerHTML = `<div class="empty-state">${icon('fileText')}<h4>No prescriptions found</h4><p>Try a different search or date range, or add a new prescription entry.</p></div>`;
+    $('#rx-pager').innerHTML = '';
+    return;
+  }
+  const totalPages = Math.ceil(filtered.length / RX_PAGE_SIZE);
+  rxPage = Math.min(rxPage, totalPages) || 1;
+  const pageRows = filtered.slice((rxPage - 1) * RX_PAGE_SIZE, rxPage * RX_PAGE_SIZE);
+  wrap.innerHTML = `<table><thead><tr><th>Date</th><th>UHID</th><th>Patient</th><th>Consultant</th><th>Test Given</th><th class="num">Amount</th><th>Status</th><th class="num">Matched Amt</th><th>Entered By</th>${customFieldsTableHeaderHtml()}<th></th></tr></thead><tbody>${pageRows.map(rxRowHtml).join('')}</tbody></table>`;
+  pageRows.forEach(r => {
+    $('#edit-' + r.id).addEventListener('click', () => navigateTo('rx-form', { editing: r }));
+    $('#del-' + r.id).addEventListener('click', () => deletePrescriptionRow(r.id, r));
+  });
+  $('#rx-pager').innerHTML = `<span class="u-muted" style="font-size:12.5px;">${filtered.length} rows · Page ${rxPage} of ${totalPages}</span>
+    <div class="u-flex u-gap-8"><button class="btn btn-ghost btn-sm" id="rx-prev" ${rxPage <= 1 ? 'disabled' : ''}>‹ Prev</button><button class="btn btn-ghost btn-sm" id="rx-next" ${rxPage >= totalPages ? 'disabled' : ''}>Next ›</button></div>`;
+  const prevBtn = $('#rx-prev'), nextBtn = $('#rx-next');
+  if (prevBtn) prevBtn.addEventListener('click', () => { rxPage--; renderRxTable(); });
+  if (nextBtn) nextBtn.addEventListener('click', () => { rxPage++; renderRxTable(); });
+}
+function rxRowHtml(r) {
+  const matched = r.matchStatus === 'matched';
+  return `<tr>
+    <td>${formatDateDisplay(r.date)}</td><td class="uhid-cell">${escapeHtml(r.uhid)}</td><td>${escapeHtml(r.patientName)}</td>
+    <td>${escapeHtml(r.consultant || '—')}</td><td>${escapeHtml(r.testGiven)}</td><td class="num">${formatMoney(r.testAmount)}</td>
+    <td>${statusBadgeHtml(r)}</td>
+    <td class="num">${matched ? formatMoney(r.matchedAmount) : '—'}</td><td>${escapeHtml(r.enteredBy || '—')}</td>${customFieldsTableCellsHtml(r)}
+    <td><div class="u-flex u-gap-8"><button class="icon-btn" id="edit-${r.id}">${icon('edit')}</button><button class="icon-btn danger" id="del-${r.id}">${icon('trash')}</button></div></td>
+  </tr>`;
+}
+
+function testOptionsHtml(selectedName) {
+  const sel = selectedName || NO_TEST_LABEL;
+  let opts = `<option value="${NO_TEST_LABEL}"${sel === NO_TEST_LABEL ? ' selected' : ''}>${NO_TEST_LABEL}</option>`;
+  opts += state.tests.map(t => `<option value="${escapeHtml(t.name)}" data-amount="${t.amount}" ${t.name === sel ? 'selected' : ''}>${escapeHtml(t.name)}</option>`).join('');
+  if (sel !== NO_TEST_LABEL && !state.tests.some(t => t.name === sel)) opts += `<option value="${escapeHtml(sel)}" selected>${escapeHtml(sel)} (custom)</option>`;
+  return opts;
+}
+function bindTestAmountToggle(selectEl, amountEl) {
+  selectEl.addEventListener('change', () => {
+    const opt = selectEl.selectedOptions[0];
+    const isNoTest = selectEl.value === NO_TEST_LABEL;
+    amountEl.disabled = isNoTest;
+    amountEl.value = isNoTest ? 0 : (opt && opt.dataset.amount !== undefined ? opt.dataset.amount : 0);
+  });
+}
+function doctorOptionsHtml(selected) {
+  let opts = state.doctors.map(d => `<option value="${escapeHtml(d.name)}" ${d.name === selected ? 'selected' : ''}>${escapeHtml(d.name)}${d.specialization ? ' — ' + escapeHtml(d.specialization) : ''}</option>`).join('');
+  if (selected && !state.doctors.some(d => d.name === selected)) opts = `<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)}</option>` + opts;
+  return opts;
+}
+function agentOptionsHtml(selected) {
+  let opts = state.agents.map(a => `<option value="${escapeHtml(a.name)}" ${a.name === selected ? 'selected' : ''}>${escapeHtml(a.name)}</option>`).join('');
+  if (selected && !state.agents.some(a => a.name === selected)) opts = `<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)}</option>` + opts;
+  return opts;
+}
+function bindUhidNormalize(inputEl) {
+  inputEl.addEventListener('input', () => {
+    const before = inputEl.value, pos = inputEl.selectionStart;
+    const after = normalizeUHID(before);
+    inputEl.value = after;
+    const newPos = Math.max(0, pos - (before.length - after.length));
+    inputEl.setSelectionRange(newPos, newPos);
+  });
+}
+
+// ---- Custom prescription fields (config in CUSTOM_PRESCRIPTION_FIELDS) ----
+function customFieldInputHtml(f, value) {
+  const val = (value !== undefined && value !== null) ? value : '';
+  if (f.type === 'select') return `<select id="cf-${f.key}">${f.required ? '' : '<option value="">— Select —</option>'}${(f.options || []).map(o => `<option value="${escapeHtml(o)}" ${o === val ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}</select>`;
+  if (f.type === 'yesno') return `<select id="cf-${f.key}"><option value="No" ${val !== 'Yes' ? 'selected' : ''}>No</option><option value="Yes" ${val === 'Yes' ? 'selected' : ''}>Yes</option></select>`;
+  if (f.type === 'number') return `<input type="number" id="cf-${f.key}" value="${escapeHtml(val)}">`;
+  if (f.type === 'date') return `<input type="date" id="cf-${f.key}" value="${escapeHtml(val)}">`;
+  return `<input type="text" id="cf-${f.key}" value="${escapeHtml(val)}">`;
+}
+function customFieldsFormHtml(existingCustom) {
+  if (!CUSTOM_PRESCRIPTION_FIELDS.length) return '';
+  return `<div class="card card-pad" style="margin-bottom:18px;"><span class="section-label"><span class="form-section-icon">${icon('edit')}</span>Additional Details</span><div class="form-grid" style="margin-top:14px;">${CUSTOM_PRESCRIPTION_FIELDS.map(f => `<div class="field-wrap"><label>${escapeHtml(f.label)}${f.required ? ' <span class="req">*</span>' : ''}</label>${customFieldInputHtml(f, existingCustom && existingCustom[f.key])}</div>`).join('')}</div></div>`;
+}
+function collectCustomFieldValues() {
+  const custom = {};
+  CUSTOM_PRESCRIPTION_FIELDS.forEach(f => { const el = document.getElementById('cf-' + f.key); if (el) custom[f.key] = f.type === 'number' ? toNum(el.value) : el.value; });
+  return custom;
+}
+function validateCustomFieldValues(custom) {
+  for (const f of CUSTOM_PRESCRIPTION_FIELDS) if (f.required && !custom[f.key] && custom[f.key] !== 0) return f.label + ' is required';
+  return null;
+}
+function customFieldsTableHeaderHtml() { return CUSTOM_PRESCRIPTION_FIELDS.map(f => `<th${f.type === 'number' ? ' class="num"' : ''}>${escapeHtml(f.label)}</th>`).join(''); }
+function customFieldsTableCellsHtml(row) { const c = row.custom || {}; return CUSTOM_PRESCRIPTION_FIELDS.map(f => `<td${f.type === 'number' ? ' class="num"' : ''}>${f.type === 'number' ? formatNum(c[f.key] || 0) : escapeHtml(c[f.key] || '—')}</td>`).join(''); }
+function customFieldsTemplateHeaders() { return CUSTOM_PRESCRIPTION_FIELDS.map(f => f.label); }
+function customFieldsFromImportRow(r) { const custom = {}; CUSTOM_PRESCRIPTION_FIELDS.forEach(f => { custom[f.key] = f.type === 'number' ? toNum(r[f.label]) : (r[f.label] || '').toString().trim(); }); return custom; }
+function customFieldsExportValues(row) { const c = row.custom || {}; return CUSTOM_PRESCRIPTION_FIELDS.map(f => f.type === 'number' ? toNum(c[f.key]) : (c[f.key] || '')); }
+
+async function renderPrescriptionFormView(content, params) {
+  const existing = params && params.editing;
+  const isEdit = !!existing;
+  $('#topbar-title').textContent = isEdit ? 'Edit Prescription' : 'New Prescription';
+  $('#topbar-sub').textContent = isEdit ? `${existing.patientName} · ${existing.uhid}` : 'Add a prescription entry';
+  $('#topbar-actions').innerHTML = `<button class="btn btn-ghost" id="rxp-cancel">Cancel</button><button class="btn btn-primary" id="rxp-save">${icon('check')} ${isEdit ? 'Save Changes' : 'Save Prescription'}</button>`;
+
+  content.innerHTML = `
+    <div class="view form-page">
+      <div class="card card-pad" style="margin-bottom:18px;">
+        <span class="section-label"><span class="form-section-icon">${icon('fileText')}</span>Visit Details</span>
+        <div class="form-grid" style="margin-top:14px;">
+          <div class="field-wrap"><label>Date <span class="req">*</span></label><input type="date" id="rx-date" value="${existing ? existing.date : todayISO()}"></div>
+          <div class="field-wrap"><label>UHID <span class="req">*</span></label><input type="text" id="rx-uhid" class="uhid-input" placeholder="e.g. UH20458" value="${existing ? escapeHtml(existing.uhid) : ''}"><span class="hint">No spaces, auto-capitalized</span></div>
+          <div class="field-wrap span-2"><label>Patient Name <span class="req">*</span></label><input type="text" id="rx-patient" value="${existing ? escapeHtml(existing.patientName) : ''}"></div>
+          <div class="field-wrap"><label>Consultant</label><select id="rx-consultant"><option value="">— Select —</option>${doctorOptionsHtml(existing && existing.consultant)}</select></div>
+          <div class="field-wrap"><label>Entered By</label><select id="rx-entered-by"><option value="">— Select —</option>${agentOptionsHtml(existing && existing.enteredBy)}</select></div>
+          <div class="field-wrap span-2"><label>Consultation Follow Up</label><input type="date" id="rx-cfu" value="${existing && isValidISODate(existing.consultationFollowUp) ? existing.consultationFollowUp : ''}"><span class="hint">Leave blank if no follow-up is scheduled</span></div>
+        </div>
+      </div>
+
+      <div class="card card-pad" style="margin-bottom:18px;">
+        <div class="u-between">
+          <span class="section-label" style="margin-bottom:0;"><span class="form-section-icon">${icon('flask')}</span>Tests Given</span>
+          ${isEdit ? '' : `<span class="tests-summary-pill" id="tests-summary">0 tests · ${formatMoney(0)}</span>`}
+        </div>
+        <div style="margin-top:14px;">
+          ${isEdit ? `
+          <div class="form-grid cols-3">
+            <div class="field-wrap span-2"><label>Test Given <span class="req">*</span></label><select id="rx-test-single">${testOptionsHtml(existing.testGiven)}</select></div>
+            <div class="field-wrap"><label>Amount <span class="req">*</span></label><input type="number" id="rx-amount-single" value="${existing.testAmount}" ${existing.testGiven === NO_TEST_LABEL ? 'disabled' : ''}></div>
+          </div>
+          <div class="field-wrap" style="max-width:240px;margin-top:14px;"><label>Test Follow Up</label><input type="date" id="rx-tfu-single" value="${isValidISODate(existing.testFollowUp) ? existing.testFollowUp : ''}"><span class="hint">Leave blank if none scheduled</span></div>
+          ` : `
+          <div id="test-rows-container"></div>
+          <button type="button" class="btn btn-secondary btn-sm" id="add-test-row-btn">${icon('plus')} Add Another Test</button>
+          <p class="hint" style="margin-top:10px;">Tip: press Enter in any field of a test row to quickly add another.</p>
+          `}
+        </div>
+      </div>
+
+      ${customFieldsFormHtml(existing && existing.custom)}
+
+      <div class="card card-pad">
+        <span class="section-label"><span class="form-section-icon">${icon('fileText')}</span>Remarks</span>
+        <textarea id="rx-remarks" style="margin-top:10px;" placeholder="Optional notes…">${existing ? escapeHtml(existing.remarks || '') : ''}</textarea>
+      </div>
+    </div>
+  `;
+
+  $('#rxp-cancel').addEventListener('click', () => navigateTo('prescriptions'));
+  bindUhidNormalize($('#rx-uhid'));
+
+  if (!isEdit) {
+    addTestRow();
+    updateTestsSummary();
+    $('#add-test-row-btn').addEventListener('click', () => { const row = addTestRow(); updateTestsSummary(); if (row) row.querySelector('.tr-test').focus(); });
+    $('#test-rows-container').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.target.type !== 'date') {
+        e.preventDefault();
+        const row = addTestRow();
+        updateTestsSummary();
+        if (row) row.querySelector('.tr-test').focus();
+      }
+    });
+    $('#test-rows-container').addEventListener('input', updateTestsSummary);
+    $('#rx-uhid').focus();
+  } else {
+    bindTestAmountToggle($('#rx-test-single'), $('#rx-amount-single'));
+  }
+
+  $('#rxp-save').addEventListener('click', async () => {
+    const date = $('#rx-date').value;
+    const uhidVal = normalizeUHID($('#rx-uhid').value);
+    const patientName = $('#rx-patient').value.trim();
+    const consultant = $('#rx-consultant').value, enteredBy = $('#rx-entered-by').value;
+    const cfu = $('#rx-cfu').value, remarks = $('#rx-remarks').value.trim();
+    if (!date || !uhidVal || !patientName) { showToast('Date, UHID, and Patient Name are required', 'error'); return; }
+    const custom = collectCustomFieldValues();
+    const customErr = validateCustomFieldValues(custom);
+    if (customErr) { showToast(customErr, 'error'); return; }
+    const btn = $('#rxp-save'); setBtnLoading(btn, true);
+    try {
+      if (isEdit) {
+        const testGiven = $('#rx-test-single').value, testAmount = toNum($('#rx-amount-single').value), tfu = $('#rx-tfu-single').value;
+        await updateDoc(doc(db, 'companies', state.companyId, 'prescriptions', existing.id), { date, uhid: uhidVal, patientName, consultant, enteredBy, consultationFollowUp: cfu, testFollowUp: tfu, remarks, testGiven, testAmount, monthKey: monthKeyFromDate(date), custom });
+        showToast('Prescription updated', 'success');
+      } else {
+        const rowEls = $$('#test-rows-container .test-row');
+        const docs = [];
+        for (const rowEl of rowEls) {
+          const testGiven = rowEl.querySelector('.tr-test').value;
+          const testAmount = toNum(rowEl.querySelector('.tr-amount').value);
+          const tfu = rowEl.querySelector('.tr-tfu').value;
+          if (!testGiven) continue;
+          docs.push({ date, uhid: uhidVal, patientName, consultant, enteredBy, consultationFollowUp: cfu, testFollowUp: tfu, remarks, testGiven, testAmount, monthKey: monthKeyFromDate(date), custom, matchStatus: 'leakage', matchedAmount: 0, matchedBillingRef: null, createdAt: serverTimestamp() });
+        }
+        if (!docs.length) { showToast('Select at least one test', 'error'); setBtnLoading(btn, false, `${icon('check')} Save Prescription`); return; }
+        const batch = writeBatch(db);
+        docs.forEach(d => batch.set(doc(collection(db, 'companies', state.companyId, 'prescriptions')), d));
+        await batch.commit();
+        showToast(`${docs.length} prescription row(s) saved`, 'success');
+      }
+      await runMatching();
+      navigateTo('prescriptions');
+    } catch (err) {
+      showToast(friendlyError(err), 'error');
+      setBtnLoading(btn, false, `${icon('check')} ${isEdit ? 'Save Changes' : 'Save Prescription'}`);
+    }
+  });
+}
+function updateTestsSummary() {
+  const pill = $('#tests-summary');
+  if (!pill) return;
+  const rows = $$('#test-rows-container .test-row');
+  const realRows = rows.filter(r => r.querySelector('.tr-test').value !== NO_TEST_LABEL);
+  const total = rows.reduce((s, r) => s + toNum(r.querySelector('.tr-amount').value), 0);
+  pill.textContent = `${realRows.length} test${realRows.length === 1 ? '' : 's'} · ${formatMoney(total)}`;
+}
+function renumberTestRows() {
+  $$('#test-rows-container .test-row').forEach((row, i) => { const badge = row.querySelector('.row-num'); if (badge) badge.textContent = i + 1; });
+}
+function addTestRow() {
+  const container = $('#test-rows-container');
+  const div = document.createElement('div');
+  div.className = 'test-row';
+  div.innerHTML = `
+    <span class="row-num">${container.children.length + 1}</span>
+    <div class="field-wrap"><label>Test Given</label><select class="tr-test">${testOptionsHtml()}</select></div>
+    <div class="field-wrap"><label>Amount</label><input type="number" class="tr-amount" value="0" disabled></div>
+    <div class="field-wrap"><label>Test Follow Up</label><input type="date" class="tr-tfu"></div>
+    <button type="button" class="icon-btn danger tr-remove">${icon('x')}</button>`;
+  container.appendChild(div);
+  const select = div.querySelector('.tr-test'), amountInput = div.querySelector('.tr-amount');
+  bindTestAmountToggle(select, amountInput);
+  select.addEventListener('change', updateTestsSummary);
+  div.querySelector('.tr-remove').addEventListener('click', () => {
+    if ($$('#test-rows-container .test-row').length > 1) { div.remove(); renumberTestRows(); updateTestsSummary(); }
+    else showToast('At least one test is required', 'error');
+  });
+  return div;
+}
+
+async function deletePrescriptionRow(id, row) {
+  const ok = await confirmDialog('Delete this prescription row?', `${row.patientName} — ${row.testGiven} (${formatDateDisplay(row.date)}) will be permanently removed.`, 'Delete', true);
+  if (!ok) return;
+  try { await deleteDoc(doc(db, 'companies', state.companyId, 'prescriptions', id)); showToast('Deleted', 'success'); navigateTo('prescriptions'); }
+  catch (e) { showToast(friendlyError(e), 'error'); }
+}
+
+function downloadPrescriptionTemplate() {
+  const headers = PRESCRIPTION_TEMPLATE_HEADERS.concat(customFieldsTemplateHeaders());
+  const sampleCustom = CUSTOM_PRESCRIPTION_FIELDS.map(f => f.type === 'number' ? 0 : (f.options ? f.options[0] : 'Sample'));
+  const ws = XLSX.utils.aoa_to_sheet([headers, ['2026-01-15', 'UH20458', 'Jane Doe', 'Dr. A Rahman', 'CBC Test', 500, '', '2026-02-01', '', 'Agent Name'].concat(sampleCustom)]);
+  ws['!cols'] = headers.map(() => ({ wch: 22 }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Prescriptions');
+  XLSX.writeFile(wb, 'CXDX_Prescription_Template.xlsx');
+}
+
+function openBulkImportPrescriptionsModal() {
+  openModal(`
+    <div class="modal-head"><h3>Import Prescriptions</h3><button class="icon-btn" id="m-x">${icon('x')}</button></div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--slate-500);margin-bottom:14px;line-height:1.55;">Use the template below so columns line up correctly. UHID is auto-formatted (capitalized, no spaces). Matching runs automatically right after import.</p>
+      <button class="btn btn-secondary btn-sm" id="bi-template" style="margin-bottom:16px;">${icon('download')} Download Template</button>
+      <div class="file-drop" id="bi-drop">
+        <input type="file" id="bi-file" accept=".xlsx,.xls,.csv" style="display:none;">
+        ${icon('uploadCloud')}<div style="font-size:13.5px;font-weight:600;">Click to choose a file</div><div style="font-size:12px;color:var(--slate-400);">.xlsx, .xls, or .csv</div><div class="fname" id="bi-fname"></div>
+      </div>
+      <div id="bi-preview" style="margin-top:16px;"></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-ghost" id="m-cancel">Cancel</button><button class="btn btn-primary" id="bi-import" disabled>${icon('check')} Import Rows</button></div>
+  `, { wide: true });
+  $('#m-x').onclick = closeModal; $('#m-cancel').onclick = closeModal;
+  $('#bi-template').onclick = downloadPrescriptionTemplate;
+  let parsedRows = [];
+  $('#bi-drop').onclick = () => $('#bi-file').click();
+  $('#bi-file').addEventListener('change', async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    $('#bi-fname').textContent = file.name;
+    try {
+      const data = await readFileAsRows(file);
+      parsedRows = data.rows.map(r => {
+        const testGiven = (r['Test Given'] || '').toString().trim() || NO_TEST_LABEL;
+        return {
+          date: parseFlexibleDate(r['Date (YYYY-MM-DD)'] || r['Date']),
+          uhid: normalizeUHID(r['UHID']),
+          patientName: (r['Patient Name'] || '').toString().trim(),
+          consultant: (r['Consultant'] || '').toString().trim(),
+          testGiven,
+          testAmount: testGiven === NO_TEST_LABEL ? 0 : toNum(r['Test Amount']),
+          consultationFollowUp: parseFlexibleDate(r['Consultation Follow Up Date (YYYY-MM-DD, optional)']) || '',
+          testFollowUp: parseFlexibleDate(r['Test Follow Up Date (YYYY-MM-DD, optional)']) || '',
+          remarks: (r['Remarks'] || '').toString().trim(),
+          enteredBy: (r['Entered By'] || '').toString().trim(),
+          custom: customFieldsFromImportRow(r),
+        };
+      }).filter(r => r.uhid && r.date);
+      $('#bi-preview').innerHTML = parsedRows.length
+        ? `<div class="badge matched" style="margin-bottom:8px;">${icon('check')} ${parsedRows.length} valid rows detected</div><div class="table-wrap" style="max-height:220px;overflow-y:auto;"><table><thead><tr><th>Date</th><th>UHID</th><th>Patient</th><th>Test</th><th class="num">Amount</th></tr></thead><tbody>${parsedRows.slice(0, 8).map(r => `<tr><td>${formatDateDisplay(r.date)}</td><td class="uhid-cell">${escapeHtml(r.uhid)}</td><td>${escapeHtml(r.patientName)}</td><td>${escapeHtml(r.testGiven)}</td><td class="num">${formatMoney(r.testAmount)}</td></tr>`).join('')}</tbody></table></div>${parsedRows.length > 8 ? `<p class="u-muted" style="font-size:12px;margin-top:6px;">+ ${parsedRows.length - 8} more rows</p>` : ''}`
+        : `<div class="badge leakage">${icon('alertTriangle')} No valid rows found — check the Date and UHID columns are filled in</div>`;
+      $('#bi-import').disabled = !parsedRows.length;
+    } catch (err) { showToast('Could not read that file: ' + friendlyError(err), 'error'); }
+  });
+  $('#bi-import').onclick = async () => {
+    const btn = $('#bi-import'); setBtnLoading(btn, true);
+    try {
+      await bulkImportPrescriptions(parsedRows);
+      showToast(`${parsedRows.length} prescriptions imported`, 'success');
+      closeModal();
+      await runMatching();
+      navigateTo('prescriptions');
+    } catch (err) { showToast(friendlyError(err), 'error'); setBtnLoading(btn, false, `${icon('check')} Import Rows`); }
+  };
+}
+async function bulkImportPrescriptions(rows) {
+  let batch = writeBatch(db), n = 0;
+  for (const r of rows) {
+    batch.set(doc(collection(db, 'companies', state.companyId, 'prescriptions')), Object.assign({}, r, { monthKey: monthKeyFromDate(r.date), matchStatus: 'leakage', matchedAmount: 0, matchedBillingRef: null, createdAt: serverTimestamp() }));
+    n++;
+    if (n === 450) { await batch.commit(); batch = writeBatch(db); n = 0; }
+  }
+  if (n > 0) await batch.commit();
+}
+
+VIEW_RENDERERS['prescriptions'] = renderPrescriptionsView;
+VIEW_RENDERERS['rx-form'] = renderPrescriptionFormView;
+
+/* ---- SECTION: MASTERS ---- */
+let mastersActiveTab = 'doctors';
+
+async function loadMasters() {
+  const [dSnap, tSnap, aSnap] = await Promise.all([
+    getDocs(collection(db, 'companies', state.companyId, 'doctors')),
+    getDocs(collection(db, 'companies', state.companyId, 'tests')),
+    getDocs(collection(db, 'companies', state.companyId, 'agents')),
+  ]);
+  state.doctors = dSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  state.tests = tSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  state.agents = aSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+}
+
+async function renderMastersView(content) {
+  $('#topbar-actions').innerHTML = '';
+  content.innerHTML = `<div class="view">
+    <div class="pill-filters" id="master-tabs" style="margin-bottom:18px;">${Object.keys(MASTER_DEFS).map(k => `<button class="pill ${k === mastersActiveTab ? 'active' : ''}" data-t="${k}">${MASTER_DEFS[k].labelPlural}</button>`).join('')}</div>
+    <div class="card">
+      <div class="table-toolbar">
+        <div class="search-box">${icon('search')}<input type="text" id="master-search" placeholder="Search…"></div>
+        <div class="u-flex u-gap-8" style="flex-wrap:wrap;">
+          <button class="btn btn-secondary btn-sm" id="master-template">${icon('download')} Template</button>
+          <button class="btn btn-secondary btn-sm" id="master-import">${icon('uploadCloud')} Import</button>
+          <button class="btn btn-primary btn-sm" id="master-add">${icon('plusCircle')} Add ${MASTER_DEFS[mastersActiveTab].label}</button>
+        </div>
+      </div>
+      <div class="table-wrap" id="master-table-wrap"></div>
+    </div>
+  </div>`;
+  $$('#master-tabs .pill').forEach(p => p.addEventListener('click', () => { mastersActiveTab = p.dataset.t; renderMastersView(content); }));
+  $('#master-template').addEventListener('click', () => downloadMasterTemplate(mastersActiveTab));
+  $('#master-import').addEventListener('click', () => openMasterImportModal(mastersActiveTab));
+  $('#master-add').addEventListener('click', () => openMasterFormModal(mastersActiveTab));
+  $('#master-search').addEventListener('input', debounce((e) => renderMasterTable(e.target.value.trim().toLowerCase()), 200));
+  renderMasterTable('');
+}
+function renderMasterTable(searchTerm) {
+  const def = MASTER_DEFS[mastersActiveTab];
+  let rows = state[mastersActiveTab];
+  if (searchTerm) rows = rows.filter(r => def.fields.some(f => (r[f.key] || '').toString().toLowerCase().includes(searchTerm)));
+  const wrap = $('#master-table-wrap');
+  if (!rows.length) { wrap.innerHTML = `<div class="empty-state">${icon('database')}<h4>No ${def.labelPlural.toLowerCase()} yet</h4><p>Add one manually, or import a list from Excel.</p></div>`; return; }
+  wrap.innerHTML = `<table><thead><tr>${def.fields.map(f => `<th${f.type === 'number' ? ' class="num"' : ''}>${f.label}</th>`).join('')}<th></th></tr></thead>
+    <tbody>${rows.map(r => `<tr>${def.fields.map(f => `<td${f.type === 'number' ? ' class="num"' : ''}>${f.type === 'number' ? formatMoney(r[f.key]) : escapeHtml(r[f.key] || '—')}</td>`).join('')}<td><div class="u-flex u-gap-8"><button class="icon-btn" id="medit-${r.id}">${icon('edit')}</button><button class="icon-btn danger" id="mdel-${r.id}">${icon('trash')}</button></div></td></tr>`).join('')}</tbody></table>`;
+  rows.forEach(r => {
+    $('#medit-' + r.id).addEventListener('click', () => openMasterFormModal(mastersActiveTab, r));
+    $('#mdel-' + r.id).addEventListener('click', () => deleteMaster(mastersActiveTab, r));
+  });
+}
+function openMasterFormModal(type, existing) {
+  const def = MASTER_DEFS[type], isEdit = !!existing;
+  openModal(`
+    <div class="modal-head"><h3>${isEdit ? 'Edit' : 'Add'} ${def.label}</h3><button class="icon-btn" id="m-x">${icon('x')}</button></div>
+    <div class="modal-body">${def.fields.map(f => `<div class="field-wrap" style="margin-bottom:14px;"><label>${f.label}${f.required ? ' <span class="req">*</span>' : ''}</label><input type="${f.type === 'number' ? 'number' : 'text'}" id="mf-${f.key}" value="${existing ? escapeHtml(existing[f.key]) : ''}"></div>`).join('')}</div>
+    <div class="modal-foot"><button class="btn btn-ghost" id="m-cancel">Cancel</button><button class="btn btn-primary" id="mf-save">${icon('check')} Save</button></div>
+  `);
+  $('#m-x').onclick = closeModal; $('#m-cancel').onclick = closeModal;
+  $('#mf-save').onclick = async () => {
+    const data = {};
+    for (const f of def.fields) {
+      const val = $('#mf-' + f.key).value;
+      if (f.required && !val.toString().trim()) { showToast(f.label + ' is required', 'error'); return; }
+      data[f.key] = f.type === 'number' ? toNum(val) : val.toString().trim();
+    }
+    const btn = $('#mf-save'); setBtnLoading(btn, true);
+    try {
+      if (isEdit) await updateDoc(doc(db, 'companies', state.companyId, type, existing.id), data);
+      else await addDoc(collection(db, 'companies', state.companyId, type), Object.assign({}, data, { createdAt: serverTimestamp() }));
+      await loadMasters();
+      showToast(def.label + ' saved', 'success');
+      closeModal();
+      navigateTo('masters');
+    } catch (err) { showToast(friendlyError(err), 'error'); setBtnLoading(btn, false, `${icon('check')} Save`); }
+  };
+}
+async function deleteMaster(type, row) {
+  const def = MASTER_DEFS[type];
+  const ok = await confirmDialog(`Delete this ${def.label.toLowerCase()}?`, `"${row.name}" will be removed from ${def.labelPlural}. Existing prescriptions that reference it are not changed.`, 'Delete', true);
+  if (!ok) return;
+  try { await deleteDoc(doc(db, 'companies', state.companyId, type, row.id)); await loadMasters(); showToast('Deleted', 'success'); navigateTo('masters'); }
+  catch (e) { showToast(friendlyError(e), 'error'); }
+}
+function downloadMasterTemplate(type) {
+  const def = MASTER_DEFS[type];
+  const headers = def.fields.map(f => f.label);
+  const sample = def.fields.map(f => f.type === 'number' ? 500 : (f.key === 'specialization' ? 'Cardiology' : 'Sample ' + f.label));
+  const ws = XLSX.utils.aoa_to_sheet([headers, sample]);
+  ws['!cols'] = headers.map(() => ({ wch: 22 }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, def.labelPlural);
+  XLSX.writeFile(wb, `CXDX_${def.label}_Template.xlsx`);
+}
+function openMasterImportModal(type) {
+  const def = MASTER_DEFS[type];
+  openModal(`
+    <div class="modal-head"><h3>Import ${def.labelPlural}</h3><button class="icon-btn" id="m-x">${icon('x')}</button></div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--slate-500);margin-bottom:14px;">Rows are matched by name — importing an existing ${def.label.toLowerCase()} updates it instead of duplicating it.</p>
+      <button class="btn btn-secondary btn-sm" id="mi-template" style="margin-bottom:16px;">${icon('download')} Download Template</button>
+      <div class="file-drop" id="mi-drop"><input type="file" id="mi-file" accept=".xlsx,.xls,.csv" style="display:none;">${icon('uploadCloud')}<div style="font-size:13.5px;font-weight:600;">Click to choose a file</div><div class="fname" id="mi-fname"></div></div>
+      <div id="mi-preview" style="margin-top:16px;"></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-ghost" id="m-cancel">Cancel</button><button class="btn btn-primary" id="mi-import" disabled>${icon('check')} Import</button></div>
+  `);
+  $('#m-x').onclick = closeModal; $('#m-cancel').onclick = closeModal;
+  $('#mi-template').onclick = () => downloadMasterTemplate(type);
+  let parsedRows = [];
+  $('#mi-drop').onclick = () => $('#mi-file').click();
+  $('#mi-file').addEventListener('change', async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    $('#mi-fname').textContent = file.name;
+    try {
+      const data = await readFileAsRows(file);
+      parsedRows = data.rows.map(r => { const obj = {}; def.fields.forEach(f => { obj[f.key] = f.type === 'number' ? toNum(r[f.label]) : (r[f.label] || '').toString().trim(); }); return obj; }).filter(r => r.name);
+      $('#mi-preview').innerHTML = parsedRows.length ? `<div class="badge matched">${icon('check')} ${parsedRows.length} rows ready to import</div>` : `<div class="badge leakage">${icon('alertTriangle')} No valid rows found</div>`;
+      $('#mi-import').disabled = !parsedRows.length;
+    } catch (err) { showToast('Could not read that file: ' + friendlyError(err), 'error'); }
+  });
+  $('#mi-import').onclick = async () => {
+    const btn = $('#mi-import'); setBtnLoading(btn, true);
+    try { await importMasterRows(type, parsedRows); showToast(`${parsedRows.length} ${def.labelPlural.toLowerCase()} imported`, 'success'); closeModal(); navigateTo('masters'); }
+    catch (err) { showToast(friendlyError(err), 'error'); setBtnLoading(btn, false, `${icon('check')} Import`); }
+  };
+}
+async function importMasterRows(type, rows) {
+  const existing = state[type];
+  let batch = writeBatch(db), n = 0;
+  for (const r of rows) {
+    const match = existing.find(e => (e.name || '').toLowerCase() === (r.name || '').toLowerCase());
+    const ref = match ? doc(db, 'companies', state.companyId, type, match.id) : doc(collection(db, 'companies', state.companyId, type));
+    batch.set(ref, match ? r : Object.assign({}, r, { createdAt: serverTimestamp() }), { merge: true });
+    n++;
+    if (n === 450) { await batch.commit(); batch = writeBatch(db); n = 0; }
+  }
+  if (n > 0) await batch.commit();
+  await loadMasters();
+}
+
+VIEW_RENDERERS['masters'] = renderMastersView;
+
+/* ---- SECTION: BILLING DUMP + MATCHING ---- */
+function readFileAsRows(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const headers = (XLSX.utils.sheet_to_json(ws, { header: 1 })[0] || []).filter(h => h !== undefined && h !== '');
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        resolve({ headers, rows });
+      } catch (err) { reject(err); }
+    };
+    reader.onerror = () => reject(new Error('Could not read file'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+function detectColumnMapping(headers, savedMap) {
+  const guess = { uhid: '', date: '', amount: '', testName: '', patientName: '' };
+  const lower = headers.map(h => (h || '').toString().toLowerCase());
+  function find(patterns) { for (const p of patterns) { const idx = lower.findIndex(h => h.includes(p)); if (idx !== -1) return headers[idx]; } return ''; }
+  guess.uhid = find(['uhid', 'patient id', 'patientid', 'uh id', 'mrn', 'reg no', 'registration']);
+  guess.date = find(['date', 'bill date', 'visit date', 'txn date']);
+  guess.amount = find(['amount', 'value', 'bill amt', 'billed', 'net amount', 'total']);
+  guess.testName = find(['test name', 'test', 'item', 'service', 'procedure']);
+  guess.patientName = find(['patient name', 'patient', 'name']);
+  if (savedMap) Object.keys(guess).forEach(k => { if (savedMap[k] && headers.includes(savedMap[k])) guess[k] = savedMap[k]; });
+  return guess;
+}
+
+async function renderBillingView(content) {
+  $('#topbar-actions').innerHTML = `<button class="btn btn-primary" id="bv-upload">${icon('uploadCloud')} Upload Billing Dump</button>`;
+  $('#bv-upload').addEventListener('click', () => openBillingUploadModal());
+  content.innerHTML = `<div class="view"><div id="bv-list"><div class="u-center" style="padding:60px 0;"><div class="loader-ring"></div></div></div></div>`;
+  const snap = await getDocs(query(collection(db, 'companies', state.companyId, 'billingDumps'), orderBy('monthKey', 'desc')));
+  const dumps = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const list = $('#bv-list');
+  if (!dumps.length) { list.innerHTML = `<div class="empty-state">${icon('uploadCloud')}<h4>No billing dumps uploaded yet</h4><p>Upload your first month's raw billing export to start matching it against prescriptions.</p></div>`; return; }
+  list.innerHTML = dumps.map(d => `
+    <div class="month-tile">
+      <div><div class="m-name">${monthLabel(d.monthKey)}</div><div class="m-meta">${formatNum(d.rowCount || 0)} rows · uploaded ${d.uploadedAt && d.uploadedAt.toDate ? formatDateDisplay(d.uploadedAt.toDate().toISOString().slice(0, 10)) : 'just now'}</div></div>
+      <div class="u-flex u-gap-8">
+        <button class="btn btn-ghost btn-sm" id="bv-view-${d.id}">${icon('eye')} View</button>
+        <button class="btn btn-ghost btn-sm" id="bv-replace-${d.id}">${icon('refresh')} Replace</button>
+        <button class="btn btn-danger btn-sm" id="bv-delete-${d.id}">${icon('trash')} Delete</button>
+      </div>
+    </div>`).join('');
+  dumps.forEach(d => {
+    $('#bv-view-' + d.id).addEventListener('click', () => viewBillingDumpRows(d.id));
+    $('#bv-replace-' + d.id).addEventListener('click', () => openBillingUploadModal(d.id));
+    $('#bv-delete-' + d.id).addEventListener('click', () => deleteBillingDump(d.id));
+  });
+}
+
+async function viewBillingDumpRows(monthKey) {
+  openModal(`<div class="modal-head"><h3>${monthLabel(monthKey)} — Billing Rows</h3><button class="icon-btn" id="m-x">${icon('x')}</button></div><div class="modal-body" id="vbr-body"><div class="u-center" style="padding:40px 0;"><div class="loader-ring"></div></div></div>`, { wide: true });
+  $('#m-x').onclick = closeModal;
+  const snap = await getDocs(query(collection(db, 'companies', state.companyId, 'billingDumps', monthKey, 'rows'), fsLimit(200)));
+  const rows = snap.docs.map(d => d.data());
+  $('#vbr-body').innerHTML = rows.length ? `<div class="table-wrap" style="max-height:420px;overflow-y:auto;"><table><thead><tr><th>UHID</th><th>Date</th><th class="num">Amount</th><th>Test Name</th><th>Status</th></tr></thead><tbody>${rows.map(r => `<tr><td class="uhid-cell">${escapeHtml(r.uhid)}</td><td>${formatDateDisplay(r.date)}</td><td class="num">${formatMoney(r.amount)}</td><td>${escapeHtml(r.testName || '—')}</td><td>${r.used ? `<span class="badge matched">${icon('check')} Used</span>` : `<span class="badge neutral">Unused</span>`}</td></tr>`).join('')}</tbody></table></div><p class="u-muted" style="font-size:12px;margin-top:8px;">Showing up to 200 rows.</p>` : `<div class="empty-state">${icon('inbox')}<h4>No rows</h4></div>`;
+}
+
+function openBillingUploadModal(replaceMonthKey) {
+  const monthDefault = replaceMonthKey || new Date().toISOString().slice(0, 7);
+  openModal(`
+    <div class="modal-head"><h3>${replaceMonthKey ? 'Replace Billing Dump — ' + monthLabel(replaceMonthKey) : 'Upload Billing Dump'}</h3><button class="icon-btn" id="m-x">${icon('x')}</button></div>
+    <div class="modal-body">
+      <div class="form-grid" style="margin-bottom:6px;">
+        <div class="field-wrap"><label>Month <span class="req">*</span></label><input type="month" id="bu-month" value="${monthDefault}" ${replaceMonthKey ? 'disabled' : ''}></div>
+        <div class="field-wrap"><label>File <span class="req">*</span></label>
+          <div class="file-drop" id="bu-drop" style="padding:10px;">
+            <input type="file" id="bu-file" accept=".xlsx,.xls,.csv" style="display:none;">
+            <div style="font-size:13px;display:flex;align-items:center;gap:8px;justify-content:center;">${icon('uploadCloud')} Choose file</div>
+            <div class="fname" id="bu-fname"></div>
+          </div>
+        </div>
+      </div>
+      <div id="bu-mapping-zone"></div>
+      <div id="bu-preview-zone"></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-ghost" id="m-cancel">Cancel</button><button class="btn btn-primary" id="bu-confirm" disabled>${icon('uploadCloud')} Confirm &amp; Upload</button></div>
+  `, { wide: true });
+  $('#m-x').onclick = closeModal; $('#m-cancel').onclick = closeModal;
+  $('#bu-drop').onclick = () => $('#bu-file').click();
+
+  let fileRows = [];
+  $('#bu-file').addEventListener('change', async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    $('#bu-fname').textContent = file.name;
+    try {
+      const data = await readFileAsRows(file);
+      fileRows = data.rows;
+      const guess = detectColumnMapping(data.headers, state.matchingConfig && state.matchingConfig.billingMap);
+      renderMappingZone(data.headers, guess);
+    } catch (err) { showToast('Could not read that file: ' + friendlyError(err), 'error'); }
+  });
+
+  function renderMappingZone(headers, guess) {
+    const optionsHtml = (val) => `<option value="">— Not in file —</option>` + headers.map(h => `<option value="${escapeHtml(h)}" ${h === val ? 'selected' : ''}>${escapeHtml(h)}</option>`).join('');
+    $('#bu-mapping-zone').innerHTML = `
+      <div class="divider"></div><span class="section-label">Map Columns</span>
+      <div class="map-row"><div class="field-name"><span class="req-dot"></span>UHID</div><span class="arrow">${icon('chevronRight')}</span><select id="map-uhid">${optionsHtml(guess.uhid)}</select></div>
+      <div class="map-row"><div class="field-name"><span class="req-dot"></span>Date</div><span class="arrow">${icon('chevronRight')}</span><select id="map-date">${optionsHtml(guess.date)}</select></div>
+      <div class="map-row"><div class="field-name"><span class="req-dot"></span>Amount</div><span class="arrow">${icon('chevronRight')}</span><select id="map-amount">${optionsHtml(guess.amount)}</select></div>
+      <div class="map-row"><div class="field-name">Test Name <span class="hint">(optional)</span></div><span class="arrow">${icon('chevronRight')}</span><select id="map-testName">${optionsHtml(guess.testName)}</select></div>
+      <div class="map-row"><div class="field-name">Patient Name <span class="hint">(optional)</span></div><span class="arrow">${icon('chevronRight')}</span><select id="map-patientName">${optionsHtml(guess.patientName)}</select></div>
+    `;
+    ['uhid', 'date', 'amount', 'testName', 'patientName'].forEach(k => $('#map-' + k).addEventListener('change', updatePreview));
+    updatePreview();
+  }
+  function currentMap() { return { uhid: $('#map-uhid').value, date: $('#map-date').value, amount: $('#map-amount').value, testName: $('#map-testName').value, patientName: $('#map-patientName').value }; }
+  function updatePreview() {
+    const map = currentMap();
+    const ok = map.uhid && map.date && map.amount;
+    $('#bu-confirm').disabled = !ok;
+    if (!ok) { $('#bu-preview-zone').innerHTML = `<p class="u-muted" style="font-size:12.5px;margin-top:10px;">Map UHID, Date, and Amount to continue.</p>`; return; }
+    const previewRows = fileRows.slice(0, 5).map(r => ({ uhid: normalizeUHID(r[map.uhid]), date: parseFlexibleDate(r[map.date]), amount: toNum(r[map.amount]), testName: map.testName ? r[map.testName] : '' }));
+    $('#bu-preview-zone').innerHTML = `<div class="divider"></div><span class="section-label">Preview (first 5 of ${fileRows.length} rows)</span><div class="table-wrap"><table><thead><tr><th>UHID</th><th>Date</th><th class="num">Amount</th><th>Test Name</th></tr></thead><tbody>${previewRows.map(r => `<tr><td class="uhid-cell">${escapeHtml(r.uhid) || '—'}</td><td>${r.date ? formatDateDisplay(r.date) : '<span style="color:var(--red-600);">unparsed</span>'}</td><td class="num">${formatMoney(r.amount)}</td><td>${escapeHtml(r.testName || '—')}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+
+  $('#bu-confirm').onclick = async () => {
+    const monthKey = $('#bu-month').value;
+    if (!monthKey) { showToast('Select a month', 'error'); return; }
+    const map = currentMap();
+    if (!map.uhid || !map.date || !map.amount) { showToast('Map UHID, Date, and Amount', 'error'); return; }
+    if (!replaceMonthKey) {
+      const existingDumpSnap = await getDoc(doc(db, 'companies', state.companyId, 'billingDumps', monthKey));
+      if (existingDumpSnap.exists()) {
+        const ok = await confirmDialog('Replace existing dump?', `A billing dump already exists for ${monthLabel(monthKey)} with ${existingDumpSnap.data().rowCount || 0} rows. Uploading will delete it and replace it with this file.`, 'Replace', true);
+        if (!ok) return;
+      }
+    }
+    const btn = $('#bu-confirm'); setBtnLoading(btn, true);
+    try {
+      await uploadBillingDump(monthKey, fileRows, map);
+      showToast('Billing dump uploaded — running matching…', 'info');
+      closeModal();
+      const r = await runMatching();
+      showToast(`Matching complete — ${r.matchedCount} matched, ${r.leakageCount} leakage`, 'success');
+      navigateTo('billing');
+    } catch (err) { showToast(friendlyError(err), 'error'); setBtnLoading(btn, false, `${icon('uploadCloud')} Confirm & Upload`); }
+  };
+}
+
+async function uploadBillingDump(monthKey, fileRows, map) {
+  await deleteAllInCollection(collection(db, 'companies', state.companyId, 'billingDumps', monthKey, 'rows'));
+  let batch = writeBatch(db), n = 0, count = 0;
+  for (const r of fileRows) {
+    const uhidVal = normalizeUHID(r[map.uhid]);
+    const dateVal = parseFlexibleDate(r[map.date]);
+    if (!uhidVal || !dateVal) continue;
+    const rowData = { uhid: uhidVal, date: dateVal, amount: toNum(r[map.amount]), testName: map.testName ? (r[map.testName] || '').toString().trim() : '', patientName: map.patientName ? (r[map.patientName] || '').toString().trim() : '', used: false, usedBy: null };
+    batch.set(doc(collection(db, 'companies', state.companyId, 'billingDumps', monthKey, 'rows')), rowData);
+    n++; count++;
+    if (n === 450) { await batch.commit(); batch = writeBatch(db); n = 0; }
+  }
+  if (n > 0) await batch.commit();
+  await setDoc(doc(db, 'companies', state.companyId, 'billingDumps', monthKey), { monthKey, rowCount: count, uploadedAt: serverTimestamp() });
+  const newConfig = Object.assign({}, state.matchingConfig, { billingMap: map });
+  await updateDoc(doc(db, 'companies', state.companyId), { matchingConfig: newConfig });
+  state.matchingConfig = newConfig;
+}
+
+async function deleteBillingDump(monthKey) {
+  const ok = await confirmDialog('Delete billing dump?', `This removes all uploaded billing rows for ${monthLabel(monthKey)}. Prescriptions matched against this data move back to Leakage until re-matched.`, 'Delete', true);
+  if (!ok) return;
+  try {
+    await deleteAllInCollection(collection(db, 'companies', state.companyId, 'billingDumps', monthKey, 'rows'));
+    await deleteDoc(doc(db, 'companies', state.companyId, 'billingDumps', monthKey));
+    showToast('Billing dump deleted — re-running matching…', 'info');
+    await runMatching();
+    navigateTo('billing');
+  } catch (e) { showToast(friendlyError(e), 'error'); }
+}
+
+async function runMatching() {
+  const [prescSnap, dumpsSnap] = await Promise.all([
+    getDocs(collection(db, 'companies', state.companyId, 'prescriptions')),
+    getDocs(collection(db, 'companies', state.companyId, 'billingDumps')),
+  ]);
+  const prescriptions = prescSnap.docs.map(d => ({ id: d.id, ref: d.ref, ...d.data() }));
+  let billingRows = [];
+  for (const dDoc of dumpsSnap.docs) {
+    const rowsSnap = await getDocs(collection(db, 'companies', state.companyId, 'billingDumps', dDoc.id, 'rows'));
+    rowsSnap.docs.forEach(r => billingRows.push({ id: r.id, ref: r.ref, ...r.data() }));
+  }
+  const rawWindow = state.matchingConfig && state.matchingConfig.windowDays;
+  const windowDays = (rawWindow === undefined || rawWindow === null) ? 1 : rawWindow; // -1 means "unlimited"
+  const byUhid = {};
+  billingRows.forEach(b => { (byUhid[b.uhid] = byUhid[b.uhid] || []).push(b); });
+  Object.values(byUhid).forEach(list => list.sort((a, b) => (a.date < b.date ? -1 : 1)));
+
+  const usedBillingIds = new Set();
+  const prescUpdates = [];
+  const sortedPresc = prescriptions.slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+  for (const p of sortedPresc) {
+    if (p.testGiven === NO_TEST_LABEL) {
+      // Nothing was prescribed on this visit — not part of conversion tracking at all.
+      prescUpdates.push({ ref: p.ref, data: { matchStatus: 'no-test', matchedAmount: 0, matchedBillingRef: null } });
+      continue;
+    }
+    const isUnlimited = windowDays === -1;
+    const windowEnd = isUnlimited ? null : addDaysISO(p.date, windowDays);
+    const candidates = (byUhid[p.uhid] || []).filter(b => !usedBillingIds.has(b.id) && b.date >= p.date && (isUnlimited || b.date <= windowEnd));
+    let chosen = null;
+    const candidatesWithTestName = candidates.filter(c => c.testName && c.testName.trim());
+    if (candidatesWithTestName.length && p.testGiven) {
+      // This UHID+date window has test/item-level detail in the billing data —
+      // require the prescribed test to actually match one of them (case and
+      // extra-whitespace insensitive). No fallback: a same-day billing row
+      // for a *different* test must not count as a conversion.
+      chosen = candidatesWithTestName.find(c => normalizeForCompare(c.testName) === normalizeForCompare(p.testGiven)) || null;
+    } else {
+      // No test-name detail available for this UHID+date window (this
+      // company's billing format doesn't carry it) — match by UHID + date
+      // alone, which is the best available signal.
+      chosen = candidates[0] || null;
+    }
+    if (chosen) { usedBillingIds.add(chosen.id); prescUpdates.push({ ref: p.ref, data: { matchStatus: 'matched', matchedAmount: toNum(chosen.amount), matchedBillingRef: chosen.id } }); }
+    else prescUpdates.push({ ref: p.ref, data: { matchStatus: 'leakage', matchedAmount: 0, matchedBillingRef: null } });
+  }
+
+  let batch = writeBatch(db), n = 0;
+  for (const u of prescUpdates) { batch.update(u.ref, u.data); n++; if (n === 450) { await batch.commit(); batch = writeBatch(db); n = 0; } }
+  if (n > 0) await batch.commit();
+
+  batch = writeBatch(db); n = 0;
+  for (const b of billingRows) {
+    const isUsed = usedBillingIds.has(b.id);
+    if (!!b.used !== isUsed) { batch.update(b.ref, { used: isUsed }); n++; if (n === 450) { await batch.commit(); batch = writeBatch(db); n = 0; } }
+  }
+  if (n > 0) await batch.commit();
+
+  const matchedCount = prescUpdates.filter(u => u.data.matchStatus === 'matched').length;
+  const noTestCount = prescUpdates.filter(u => u.data.matchStatus === 'no-test').length;
+  return { matchedCount, leakageCount: prescUpdates.length - matchedCount - noTestCount, noTestCount, total: prescUpdates.length };
+}
+
+VIEW_RENDERERS['billing'] = renderBillingView;
+
+/* ---- SECTION: REPORTS ---- */
+async function renderReportsView(content) {
+  $('#topbar-actions').innerHTML = `<button class="btn btn-primary" id="rp-export">${icon('download')} Export Excel</button>`;
+  content.innerHTML = `<div class="view">
+    <div class="pill-filters" id="rp-tabs" style="margin-bottom:18px;">
+      <button class="pill active" data-t="summary">Monthly Summary</button>
+      <button class="pill" data-t="datewise">Date-wise Detail</button>
+    </div>
+    <div id="rp-body"><div class="u-center" style="padding:60px 0;"><div class="loader-ring"></div></div></div>
+  </div>`;
+  const rows = await loadAllPrescriptions();
+  state.prescriptions = rows;
+  const monthly = groupByMonth(rows);
+  const overall = computeSummaryStats(rows);
+  let rpTab = 'summary';
+  function renderBody() { if (rpTab === 'summary') renderMonthlySummaryTable(monthly, overall); else renderDateWiseTable(rows); }
+  renderBody();
+  $$('#rp-tabs .pill').forEach(p => p.addEventListener('click', () => { $$('#rp-tabs .pill').forEach(x => x.classList.remove('active')); p.classList.add('active'); rpTab = p.dataset.t; renderBody(); }));
+  $('#rp-export').addEventListener('click', () => exportReportsExcel(monthly, overall, rows));
+}
+
+function renderMonthlySummaryTable(monthly, overall) {
+  const months = Object.keys(monthly).filter(m => m !== 'unknown').sort();
+  $('#rp-body').innerHTML = `<div class="card"><div class="table-wrap"><table><thead><tr>
+    <th>Month</th><th class="num">Total Prescription</th><th class="num">Total Test Given</th><th class="num">Total Conversion Test</th>
+    <th class="num">Prescription Value</th><th class="num">Conversion Value</th><th class="num">Leakage</th><th class="num">Conversion %</th><th class="num">Leakage %</th>
+  </tr></thead><tbody>
+    <tr class="total-row"><td>Total</td><td class="num">${formatNum(overall.totalPrescription)}</td><td class="num">${formatNum(overall.totalTestGiven)}</td><td class="num">${formatNum(overall.totalConversion)}</td><td class="num">${formatMoney(overall.prescriptionValue)}</td><td class="num">${formatMoney(overall.conversionValue)}</td><td class="num">${formatMoney(overall.leakageValue)}</td><td class="num">${formatPct(overall.conversionPct)}</td><td class="num">${formatPct(overall.leakagePct)}</td></tr>
+    ${months.length ? months.map(mk => { const s = monthly[mk]; return `<tr><td>${monthLabel(mk)}</td><td class="num">${formatNum(s.totalPrescription)}</td><td class="num">${formatNum(s.totalTestGiven)}</td><td class="num">${formatNum(s.totalConversion)}</td><td class="num">${formatMoney(s.prescriptionValue)}</td><td class="num">${formatMoney(s.conversionValue)}</td><td class="num">${formatMoney(s.leakageValue)}</td><td class="num">${formatPct(s.conversionPct)}</td><td class="num">${formatPct(s.leakagePct)}</td></tr>`; }).join('') : `<tr><td colspan="9" style="text-align:center;color:var(--slate-400);padding:30px;">No prescription data yet</td></tr>`}
+  </tbody></table></div></div>`;
+}
+function renderDateWiseTable(rows) {
+  $('#rp-body').innerHTML = `<div class="card">
+    <div class="table-toolbar"><div class="search-box">${icon('search')}<input type="text" id="dw-search" placeholder="Search UHID or patient…"></div></div>
+    <div class="table-wrap" id="dw-table-wrap"></div>
+    <div id="dw-pager" class="u-between" style="padding:14px 18px;"></div>
+  </div>`;
+  let page = 1; const PAGE_SIZE = 50;
+  function draw() {
+    const term = ($('#dw-search').value || '').trim().toUpperCase();
+    const filtered = term ? rows.filter(r => ((r.uhid || '') + ' ' + (r.patientName || '')).toUpperCase().includes(term)) : rows;
+    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    page = Math.min(page, totalPages);
+    const pageRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+    $('#dw-table-wrap').innerHTML = filtered.length ? `<table><thead><tr><th>Date</th><th>UHID</th><th>Patient</th><th>Consultant</th><th>Test Given</th><th class="num">Test Amount</th><th>Status</th><th class="num">Matched Amount</th><th class="num">Leakage</th><th>Entered By</th>${customFieldsTableHeaderHtml()}</tr></thead><tbody>${pageRows.map(dwRowHtml).join('')}</tbody></table>` : `<div class="empty-state">${icon('inbox')}<h4>No rows</h4></div>`;
+    $('#dw-pager').innerHTML = `<span class="u-muted" style="font-size:12.5px;">${filtered.length} rows · Page ${page} of ${totalPages}</span><div class="u-flex u-gap-8"><button class="btn btn-ghost btn-sm" id="dw-prev" ${page <= 1 ? 'disabled' : ''}>‹ Prev</button><button class="btn btn-ghost btn-sm" id="dw-next" ${page >= totalPages ? 'disabled' : ''}>Next ›</button></div>`;
+    const pb = $('#dw-prev'), nb = $('#dw-next');
+    if (pb) pb.addEventListener('click', () => { page--; draw(); });
+    if (nb) nb.addEventListener('click', () => { page++; draw(); });
+  }
+  $('#dw-search').addEventListener('input', debounce(() => { page = 1; draw(); }, 250));
+  draw();
+}
+function dwRowHtml(r) {
+  const matched = r.matchStatus === 'matched', noTest = r.matchStatus === 'no-test';
+  return `<tr><td>${formatDateDisplay(r.date)}</td><td class="uhid-cell">${escapeHtml(r.uhid)}</td><td>${escapeHtml(r.patientName)}</td><td>${escapeHtml(r.consultant || '—')}</td><td>${escapeHtml(r.testGiven)}</td><td class="num">${formatMoney(r.testAmount)}</td><td>${statusBadgeHtml(r)}</td><td class="num">${matched ? formatMoney(r.matchedAmount) : '—'}</td><td class="num">${matched || noTest ? '—' : formatMoney(r.testAmount)}</td><td>${escapeHtml(r.enteredBy || '—')}</td>${customFieldsTableCellsHtml(r)}</tr>`;
+}
+
+function exportReportsExcel(monthly, overall, rows) {
+  const months = Object.keys(monthly).filter(m => m !== 'unknown').sort();
+  const summaryAoa = [
+    ['Month', 'Total Prescription', 'Total Test Given', 'Total Conversion Test', 'Prescription Value', 'Conversion Value', 'Leakage', 'Conversion %', 'Leakage %'],
+    ['Total', overall.totalPrescription, overall.totalTestGiven, overall.totalConversion, overall.prescriptionValue, overall.conversionValue, overall.leakageValue, formatPct(overall.conversionPct), formatPct(overall.leakagePct)],
+    ...months.map(mk => { const s = monthly[mk]; return [monthLabel(mk), s.totalPrescription, s.totalTestGiven, s.totalConversion, s.prescriptionValue, s.conversionValue, s.leakageValue, formatPct(s.conversionPct), formatPct(s.leakagePct)]; }),
+  ];
+  const dateWiseAoa = [
+    ['Date', 'UHID', 'Patient Name', 'Consultant', 'Test Given', 'Test Amount', 'Status', 'Matched Amount', 'Leakage Amount', 'Entered By', 'Remarks'].concat(customFieldsTemplateHeaders()),
+    ...rows.map(r => [r.date, r.uhid, r.patientName, r.consultant || '', r.testGiven, toNum(r.testAmount), statusLabel(r), r.matchStatus === 'matched' ? toNum(r.matchedAmount) : 0, r.matchStatus === 'leakage' ? toNum(r.testAmount) : 0, r.enteredBy || '', r.remarks || ''].concat(customFieldsExportValues(r))),
+  ];
+  const wb = XLSX.utils.book_new();
+  const ws1 = XLSX.utils.aoa_to_sheet(summaryAoa); ws1['!cols'] = summaryAoa[0].map(() => ({ wch: 19 }));
+  const ws2 = XLSX.utils.aoa_to_sheet(dateWiseAoa); ws2['!cols'] = dateWiseAoa[0].map(() => ({ wch: 16 }));
+  XLSX.utils.book_append_sheet(wb, ws1, 'Monthly Summary');
+  XLSX.utils.book_append_sheet(wb, ws2, 'Date Wise');
+  XLSX.writeFile(wb, `CXDX_Report_${(state.companyName || 'Company').replace(/[^a-z0-9]+/gi, '_')}_${todayISO()}.xlsx`);
+}
+
+VIEW_RENDERERS['reports'] = renderReportsView;
+
+/* ---- SECTION: SETTINGS ---- */
+async function changeOwnPassword(currentPassword, newPassword) {
+  const cred = EmailAuthProvider.credential(auth.currentUser.email, currentPassword);
+  await reauthenticateWithCredential(auth.currentUser, cred);
+  await fbUpdatePassword(auth.currentUser, newPassword);
+}
+
+async function renderSettingsView(content) {
+  $('#topbar-actions').innerHTML = '';
+  const cfg = state.matchingConfig || DEFAULT_MATCHING_CONFIG;
+  const mapLabels = { uhid: 'UHID', date: 'Date', amount: 'Amount', testName: 'Test Name', patientName: 'Patient Name' };
+  content.innerHTML = `<div class="view" style="max-width:640px;">
+    <div class="card card-pad" style="margin-bottom:20px;">
+      <h3 style="font-family:var(--font-display);font-weight:600;font-size:15px;margin-bottom:4px;">Matching Rules</h3>
+      <p class="u-muted" style="font-size:12.5px;margin-bottom:16px;">Controls how prescriptions are matched to billing dump rows for ${escapeHtml(state.companyName)}.</p>
+      <div class="field-wrap" style="max-width:320px;margin-bottom:10px;">
+        <label>Matching Window (days after prescription date)</label>
+        <input type="number" id="st-window" min="0" max="365" value="${cfg.windowDays === -1 ? '' : cfg.windowDays}" ${cfg.windowDays === -1 ? 'disabled' : ''}>
+        <span class="hint">0 = same day only · 1 = same day or next day</span>
+      </div>
+      <div class="checkbox-row" style="margin-bottom:16px;">
+        <input type="checkbox" id="st-window-unlimited" ${cfg.windowDays === -1 ? 'checked' : ''}>
+        <label for="st-window-unlimited" style="margin:0;font-weight:500;">Unlimited — match any billing date on or after the prescription date</label>
+      </div>
+      <button class="btn btn-primary btn-sm" id="st-save-window">${icon('check')} Save &amp; Re-run Matching</button>
+      <div class="divider"></div>
+      <span class="section-label">Current Billing Column Mapping</span>
+      <p class="u-muted" style="font-size:12px;margin-bottom:10px;">Updates automatically each time a billing dump is uploaded for this company.</p>
+      ${Object.keys(mapLabels).map(k => `<div class="u-between" style="padding:7px 0;border-bottom:1px solid var(--line-100);font-size:13px;"><span class="u-muted">${mapLabels[k]}</span><span style="font-weight:600;">${cfg.billingMap && cfg.billingMap[k] ? escapeHtml(cfg.billingMap[k]) : '—'}</span></div>`).join('')}
+    </div>
+    <div class="card card-pad">
+      <h3 style="font-family:var(--font-display);font-weight:600;font-size:15px;margin-bottom:14px;">Change Password</h3>
+      <div class="field-wrap" style="margin-bottom:12px;max-width:320px;"><label>Current Password</label><input type="password" id="st-cur-pass"></div>
+      <div class="field-wrap" style="margin-bottom:14px;max-width:320px;"><label>New Password</label><input type="password" id="st-new-pass" placeholder="Min 6 characters"></div>
+      <button class="btn btn-secondary btn-sm" id="st-change-pass">${icon('key')} Update Password</button>
+    </div>
+  </div>`;
+
+  $('#st-window-unlimited').addEventListener('change', (e) => { $('#st-window').disabled = e.target.checked; });
+
+  $('#st-save-window').addEventListener('click', async () => {
+    const unlimited = $('#st-window-unlimited').checked;
+    const days = unlimited ? -1 : parseInt($('#st-window').value, 10);
+    if (!unlimited && (isNaN(days) || days < 0)) { showToast('Enter a valid number of days, or check Unlimited', 'error'); return; }
+    const btn = $('#st-save-window'); setBtnLoading(btn, true);
+    try {
+      const newConfig = Object.assign({}, state.matchingConfig, { windowDays: days });
+      await updateDoc(doc(db, 'companies', state.companyId), { matchingConfig: newConfig });
+      state.matchingConfig = newConfig;
+      await runMatching();
+      showToast('Matching window updated and re-applied', 'success');
+      setBtnLoading(btn, false, `${icon('check')} Save & Re-run Matching`);
+    } catch (err) { showToast(friendlyError(err), 'error'); setBtnLoading(btn, false, `${icon('check')} Save & Re-run Matching`); }
+  });
+
+  $('#st-change-pass').addEventListener('click', async () => {
+    const cur = $('#st-cur-pass').value, next = $('#st-new-pass').value;
+    if (!cur || !next) { showToast('Fill in both fields', 'error'); return; }
+    if (next.length < 6) { showToast('New password must be at least 6 characters', 'error'); return; }
+    const btn = $('#st-change-pass'); setBtnLoading(btn, true);
+    try {
+      await changeOwnPassword(cur, next);
+      showToast('Password updated', 'success');
+      $('#st-cur-pass').value = ''; $('#st-new-pass').value = '';
+      setBtnLoading(btn, false, `${icon('key')} Update Password`);
+    } catch (err) { showToast(friendlyError(err), 'error'); setBtnLoading(btn, false, `${icon('key')} Update Password`); }
+  });
+}
+
+VIEW_RENDERERS['settings'] = renderSettingsView;
+
+/* ---- SECTION: INIT ---- */
+if (CONFIG_IS_PLACEHOLDER) {
+  showConfigNeeded();
+} else {
+  beginSession();
+}
+
+</script>
+</body>
+</html>
