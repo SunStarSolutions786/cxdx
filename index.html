@@ -1305,11 +1305,12 @@ async function renderPrescriptionsView(content) {
           <button class="pill" data-f="leakage">Leakage</button>
           <button class="pill" data-f="no-test">No Test</button>
         </div>
-        <div class="u-flex u-gap-8" style="align-items:center;">
-          <input type="date" id="rx-date-from" style="max-width:152px;" title="From date">
-          <span class="u-muted" style="font-size:12px;">–</span>
-          <input type="date" id="rx-date-to" style="max-width:152px;" title="To date">
-          <button class="icon-btn" id="rx-date-clear" title="Clear date filter">${icon('x')}</button>
+        <div class="u-flex u-gap-8" style="align-items:center;flex-wrap:wrap;flex-basis:100%;">
+          <span class="u-muted" style="font-size:12px;font-weight:600;">Date range:</span>
+          <input type="date" id="rx-date-from" style="max-width:160px;" title="From date">
+          <span class="u-muted" style="font-size:12px;">to</span>
+          <input type="date" id="rx-date-to" style="max-width:160px;" title="To date">
+          <button class="btn btn-ghost btn-sm" id="rx-date-clear">${icon('x')} Clear</button>
         </div>
       </div>
       <div class="table-wrap" id="rx-table-wrap"><div class="u-center" style="padding:60px 0;"><div class="loader-ring"></div></div></div>
