@@ -104,12 +104,20 @@ only used for Auth/Firestore, not for hosting, in this option.
 - **Super Admin** — creates and manages company accounts, adds/removes Admin users per company, can open any company's workspace directly.
 - **Admin** — everything inside their own company: prescription entry, master data, billing dump uploads, reports.
 
-**Prescriptions** — entered with Date, UHID, Patient Name, Consultant, Test
-Given, Test Amount, Consultation Follow Up, Test Follow Up, Remarks, and
-Entered By. The **UHID field auto-strips spaces and forces capital letters**
-as you type, since matching depends on it being exact. One prescription
-visit can include several tests — the entry form lets you add multiple test
-rows in one go.
+**Prescriptions** — a dedicated full-page form (not a popup) with Date,
+UHID, Patient Name, Consultant, Entered By, and an optional Consultation
+Follow Up date, followed by the tests given, and Remarks at the very end.
+The **UHID field auto-strips spaces and forces capital letters** as you
+type, since matching depends on it being exact. One prescription visit can
+include several tests — add rows with the button, or just press **Enter**
+in a test row to add another instantly. Each test also has its own
+optional Test Follow Up date. A running "N tests · ₹total" summary updates
+live as you add rows. Every test row defaults to **"No Test Given"** with
+the amount locked at zero — pick a real test only if one was actually
+prescribed. A visit saved this way still counts toward Total Prescriptions
+on the dashboard and reports, but is left out of Test Given, Conversion,
+and Leakage entirely (it shows as a neutral **No Test** badge, filterable
+from the Prescriptions list) — since there was nothing to convert.
 
 **Masters** — Doctors, Tests, and Agents are each manageable with add/edit/
 delete, and each has a **Download Template → fill in Excel → Import**
@@ -124,15 +132,19 @@ and (optionally) Test Name / Patient Name. That mapping is remembered as the
 default for next time, per company.
 
 **Matching engine** — for every prescription row, CXDX looks for a billing
-row with the *same UHID* dated on the prescription date **or within a
+row with the *same UHID*, dated on the prescription date **or within a
 configurable window after it** (default: same day or the next day — set
-this in **Settings**). Each billing row can only be consumed by one
-prescription, so amounts are never double-counted. A match marks the row
-**Completed** and records the actual billed amount as its *Conversion
-Value*; no match leaves it as **Leakage**, valued at the originally
-prescribed Test Amount. Matching re-runs automatically after every
-prescription entry, import, or billing upload, and can also be triggered
-manually.
+this in **Settings**, or switch it to **Unlimited** to match any billing
+date on or after the prescription date, with no cutoff). If your billing
+dump has a test/item-name column mapped, the test name has to match too
+(case and spacing don't matter) — a same-day billing row for a *different*
+test is never counted as a conversion. Each billing row can only be
+consumed by one prescription, so amounts are never double-counted. A match
+marks the row **Completed** and records the actual billed amount as its
+*Conversion Value*; no match leaves it as **Leakage**, valued at the
+originally prescribed Test Amount. Matching re-runs automatically after
+every prescription entry, import, or billing upload, and can also be
+triggered manually.
 
 **Reports** — a **Monthly Summary** (Total Prescriptions, Total Tests Given,
 Total Converted, Prescription/Conversion/Leakage Value, Conversion % and
@@ -195,8 +207,8 @@ there.
 ## Customizing
 
 - **Currency symbol** — change `CURRENCY_SYMBOL` near the top of the script (defaults to `₹`).
-- **Matching window** — each company sets its own under Settings (default: 1 day).
-- **Ambiguous dates in uploads** — a date like `03/04/2026` is treated as **DD/MM/YYYY** (3 April) — the Indian convention. If your billing exports use US-style `MM/DD/YYYY`, export dates in `YYYY-MM-DD` format instead to avoid ambiguity, or adjust the `parseFlexibleDate` function.
+- **Matching window** — each company sets its own under Settings (default: 1 day — same day or next day). Check **Unlimited** there instead to match any billing date on or after the prescription date, with no cutoff.
+- **Ambiguous dates in uploads** — a date like `03/04/2026` is treated as **DD/MM/YYYY** (3 April) — the Indian convention. If your billing exports use US-style `MM/DD/YYYY`, export dates in `YYYY-MM-DD` format instead to avoid ambiguity, or adjust the `parseFlexibleDate` function. If a date column has a time merged into the same value (`15-01-2026 14:30:00`, `2026-01-15T14:30:00`, etc.), the time is simply dropped and the date is used as-is — this applies everywhere dates are read: billing dumps, prescription import, and follow-up dates.
 
 ## Using this in India
 

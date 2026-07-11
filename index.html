@@ -80,10 +80,9 @@ a{color:inherit;}
 .mono{font-family:var(--font-mono);}
 .u-flex{display:flex;}
 .u-between{display:flex;align-items:center;justify-content:space-between;}
-.u-gap-8{gap:8px;} .u-gap-12{gap:12px;} .u-gap-16{gap:16px;}
+.u-gap-8{gap:8px;} .u-gap-12{gap:12px;}
 .u-muted{color:var(--slate-500);}
 .u-center{display:flex;align-items:center;justify-content:center;}
-.spin{animation:spin 0.8s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg);}}
 
 /* ============================================================
@@ -229,7 +228,6 @@ nav.side-nav{flex:1;padding:6px 12px;overflow-y:auto;}
   content:'';position:absolute;left:-12px;top:50%;transform:translateY(-50%);width:3px;height:18px;
   background:var(--teal-400);border-radius:0 3px 3px 0;
 }
-.nav-section-label{font-size:10.5px;text-transform:uppercase;letter-spacing:0.8px;color:rgba(255,255,255,0.32);padding:14px 12px 6px;font-weight:600;}
 #sidebar .side-foot{padding:14px 20px 18px;border-top:1px solid rgba(255,255,255,0.08);}
 .user-chip{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
 .user-avatar{
@@ -254,11 +252,6 @@ nav.side-nav{flex:1;padding:6px 12px;overflow-y:auto;}
 #content{flex:1;padding:26px;max-width:1360px;width:100%;}
 .view{animation:fade-up 0.35s var(--ease) both;}
 @keyframes fade-up{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
-
-.page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:22px;flex-wrap:wrap;}
-.page-head h2{font-family:var(--font-display);font-size:21px;font-weight:600;}
-.page-head p{color:var(--slate-500);font-size:13.5px;margin-top:3px;}
-.page-actions{display:flex;gap:10px;flex-wrap:wrap;}
 
 /* ============================================================
    CARDS / STATS
@@ -307,11 +300,23 @@ input.uhid-input{text-transform:uppercase;font-family:var(--font-mono);letter-sp
 .checkbox-row{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--slate-600);}
 
 .test-row{
-  display:grid;grid-template-columns:1fr 130px 130px 34px;gap:10px;align-items:end;margin-bottom:10px;
-  padding:12px;background:var(--paper-50);border-radius:var(--radius-sm);border:1px solid var(--line-100);
+  display:grid;grid-template-columns:1fr 130px 155px 34px;gap:10px;align-items:end;margin-bottom:10px;
+  padding:14px 14px 14px 40px;background:var(--paper-50);border-radius:var(--radius-sm);border:1px solid var(--line-100);position:relative;
 }
 .test-row .field-wrap label{font-size:11px;}
+.test-row .row-num{
+  position:absolute;left:12px;top:50%;transform:translateY(-50%);width:20px;height:20px;border-radius:50%;
+  background:var(--teal-100);color:var(--teal-700);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;
+}
 #add-test-row-btn{margin-top:2px;}
+
+.form-page{max-width:760px;margin:0 auto;}
+.tests-summary-pill{
+  display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--teal-700);
+  background:var(--teal-50);border:1px solid var(--teal-100);padding:5px 12px;border-radius:99px;
+}
+.form-section-icon{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:8px;background:var(--teal-100);color:var(--teal-700);margin-right:8px;}
+.form-section-icon svg{width:14px;height:14px;}
 
 /* ============================================================
    TABLE
@@ -413,8 +418,6 @@ tr.total-row{position:sticky;bottom:0;}
 .progress-fill.leak{background:linear-gradient(90deg,var(--amber-500),var(--amber-600));}
 
 .loader-ring{width:20px;height:20px;border:2.5px solid var(--line-200);border-top-color:var(--teal-500);border-radius:50%;animation:spin 0.7s linear infinite;}
-.skeleton{background:linear-gradient(90deg,var(--line-100) 25%,var(--line-200) 37%,var(--line-100) 63%);background-size:400% 100%;animation:sk-loop 1.4s ease infinite;border-radius:6px;}
-@keyframes sk-loop{0%{background-position:100% 0;}100%{background-position:0 0;}}
 
 .chart-legend{display:flex;gap:18px;justify-content:center;margin-top:14px;flex-wrap:wrap;}
 .chart-legend .li{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--slate-600);font-weight:500;}
@@ -576,8 +579,6 @@ const state = {
   matchingConfig: null,  // {windowDays, billingMap:{uhid,date,amount,testName,patientName}}
   doctors: [], tests: [], agents: [],
   prescriptions: [],     // cache for current filtered view
-  billingDumps: [],      // list of month docs
-  currentView: null,
   viewParams: {},
   isSuperAdmin: false,
 };
@@ -598,7 +599,8 @@ const MASTER_DEFS = {
     ] },
 };
 
-const PRESCRIPTION_TEMPLATE_HEADERS = ['Date (YYYY-MM-DD)','UHID','Patient Name','Consultant','Test Given','Test Amount','Consultation Follow Up (Yes/No)','Test Follow Up (Yes/No)','Remarks','Entered By'];
+const PRESCRIPTION_TEMPLATE_HEADERS = ['Date (YYYY-MM-DD)','UHID','Patient Name','Consultant','Test Given','Test Amount','Consultation Follow Up Date (YYYY-MM-DD, optional)','Test Follow Up Date (YYYY-MM-DD, optional)','Remarks','Entered By'];
+const NO_TEST_LABEL = 'No Test Given'; // sentinel for a visit where the doctor prescribed no test — excluded from test/conversion stats but still counts as a prescription visit
 
 // Add extra prescription fields here without touching the matching engine or
 // any other logic — each entry automatically appears in the New/Edit
@@ -620,7 +622,6 @@ const ICONS = {
   fileText:'<path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M14 3v4h4M9 13h6M9 17h6M9 9h2"/>',
   uploadCloud:'<path d="M7 18a4.5 4.5 0 0 1-1-8.9A5.5 5.5 0 0 1 16.9 8.1 4 4 0 0 1 18 16"/><path d="M12 11v8M9 14l3-3 3 3"/>',
   flask:'<path d="M9 2h6M10 2v6.5L4.8 18a1.8 1.8 0 0 0 1.6 2.7h11.2a1.8 1.8 0 0 0 1.6-2.7L14 8.5V2"/><path d="M7.5 14.5h9"/>',
-  users:'<circle cx="9" cy="8" r="3.2"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M15.5 5.4a3.2 3.2 0 0 1 0 6.2M18 20a6.3 6.3 0 0 0-3.5-6"/>',
   barChart:'<path d="M4 20V10M12 20V4M20 20v-7"/><path d="M2.5 20h19"/>',
   settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H4a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.9.3H10a1.7 1.7 0 0 0 1-1.6V4a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.9V10a1.7 1.7 0 0 0 1.6 1H20a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.6 1Z"/>',
   building:'<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 8h1M14 8h1M9 12h1M14 12h1M9 16h1M14 16h1M10 21v-3h4v3"/>',
@@ -633,29 +634,17 @@ const ICONS = {
   check:'<path d="M5 12.5 10 17 19 7"/>',
   checkCircle:'<circle cx="12" cy="12" r="9.5"/><path d="M7.5 12.5 10.5 15.5 16.5 9"/>',
   alertTriangle:'<path d="M10.3 3.9 1.9 18a1.5 1.5 0 0 0 1.3 2.3h17.6a1.5 1.5 0 0 0 1.3-2.3L13.7 3.9a1.5 1.5 0 0 0-2.6 0Z"/><path d="M12 9.5v4M12 17h.01"/>',
-  chevronDown:'<path d="M6 9l6 6 6-6"/>',
   chevronRight:'<path d="M9 6l6 6-6 6"/>',
   search:'<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
   arrowLeft:'<path d="M19 12H5M11 6l-6 6 6 6"/>',
-  logOut:'<path d="M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4"/><path d="M16 17l5-5-5-5M21 12H9"/>',
   info:'<circle cx="12" cy="12" r="9.5"/><path d="M12 11v6M12 7.5h.01"/>',
-  shield:'<path d="M12 3l7.5 3v5.5c0 4.6-3.1 8.3-7.5 9.5-4.4-1.2-7.5-4.9-7.5-9.5V6L12 3Z"/>',
-  mail:'<rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="m4 6.5 8 6 8-6"/>',
-  lock:'<rect x="5" y="10.5" width="14" height="9.5" rx="1.5"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/>',
   refresh:'<path d="M20 11A8 8 0 0 0 6 6.3L3.5 8.5"/><path d="M4 4v5h5"/><path d="M4 13a8 8 0 0 0 14 4.7l2.5-2.2"/><path d="M20 20v-5h-5"/>',
   eye:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
   key:'<circle cx="8" cy="15.5" r="4.5"/><path d="m11.5 12 8-8M16 5.5 18.5 8M19.5 4.5 22 7"/>',
   power:'<path d="M12 3v8"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/>',
-  calendar:'<rect x="3.5" y="5" width="17" height="16" rx="1.5"/><path d="M8 3v4M16 3v4M3.5 10h17"/>',
   inbox:'<path d="M4 12h4.5l1.5 3h4l1.5-3H20"/><path d="M6 5h12l2 7v6a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18v-6l2-7Z"/>',
   database:'<ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5V12c0 1.7 3.6 3 8 3s8-1.3 8-3V5.5"/><path d="M4 12v6.5c0 1.7 3.6 3 8 3s8-1.3 8-3V12"/>',
-  link:'<path d="M9.5 14.5 14.5 9.5"/><path d="M11 6.5 13 4.5a3.5 3.5 0 0 1 5 5l-2 2M13 17.5l-2 2a3.5 3.5 0 0 1-5-5l2-2"/>',
   percent:'<path d="M5 19 19 5"/><circle cx="7" cy="7" r="2.3"/><circle cx="17" cy="17" r="2.3"/>',
-  file:'<path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M14 3v4h4"/>',
-  clock:'<circle cx="12" cy="12" r="9.5"/><path d="M12 7v5l3.5 2"/>',
-  history:'<path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3"/><path d="M3 4v4.5h4.5"/><path d="M12 8v4l3 2"/>',
-  menu:'<path d="M3 6h18M3 12h18M3 18h18"/>',
-  play:'<path d="m7 4 13 8-13 8V4Z"/>',
 };
 function icon(name, cls) {
   const inner = ICONS[name] || ICONS.info;
@@ -684,18 +673,23 @@ function addDaysISO(iso, days) { const d = new Date(iso + 'T00:00:00'); d.setDat
 function formatDateDisplay(iso) { if(!iso) return '—'; const d = new Date(iso + 'T00:00:00'); if (isNaN(d)) return iso; return String(d.getDate()).padStart(2,'0') + ' ' + MONTH_NAMES[d.getMonth()] + ' ' + d.getFullYear(); }
 function validateEmail(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
 function debounce(fn, wait) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), wait); }; }
-function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
 
 // Flexible date parser: handles Date objects, Excel serials, and common string formats -> 'YYYY-MM-DD' or null
 function parseFlexibleDate(value) {
   if (value === null || value === undefined || value === '') return null;
-  if (value instanceof Date && !isNaN(value)) return isoFromParts(value.getFullYear(), value.getMonth()+1, value.getDate());
-  if (typeof value === 'number') { // Excel serial date
+  // SheetJS (cellDates:true) always hands back UTC-anchored Date objects, regardless of
+  // whether the source cell was a pure date or a date+time — reading it with local getters
+  // can silently shift the day depending on the browser's timezone, so use UTC getters here.
+  if (value instanceof Date && !isNaN(value)) return isoFromParts(value.getUTCFullYear(), value.getUTCMonth()+1, value.getUTCDate());
+  if (typeof value === 'number') { // Excel serial date (a fractional part, if any, is just time-of-day and is ignored below)
     const epoch = new Date(Date.UTC(1899, 11, 30));
     const d = new Date(epoch.getTime() + value * 86400000);
     return isoFromParts(d.getUTCFullYear(), d.getUTCMonth()+1, d.getUTCDate());
   }
-  const s = String(value).trim();
+  let s = String(value).trim();
+  // Drop a merged time-of-day so "15-01-2026 14:30:00", "2026-01-15T14:30:00Z", and
+  // "15/01/2026 2:30 PM" all reduce to just their date portion before matching.
+  s = s.replace(/[T\s]\d{1,2}:\d{2}(:\d{2})?(\.\d+)?\s*(AM|PM|am|pm)?.*$/, '').trim();
   let m;
   if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return isoFromParts(+m[1], +m[2], +m[3]);
   if ((m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/))) {
@@ -709,6 +703,7 @@ function parseFlexibleDate(value) {
   return null;
 }
 function isoFromParts(y, m, d) { if(!y||!m||!d) return null; return y + '-' + String(m).padStart(2,'0') + '-' + String(d).padStart(2,'0'); }
+function isValidISODate(v) { return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v); }
 
 function animateCountUp(el, target, opts) {
   const isMoney = opts && opts.money, isPct = opts && opts.pct;
@@ -883,6 +878,7 @@ const VIEW_TITLES = {
   'sa-companies': ['Companies', 'Create and manage company accounts'],
   'dashboard': ['Dashboard', 'Conversion overview'],
   'prescriptions': ['Prescriptions', 'Entry and records'],
+  'rx-form': ['New Prescription', 'Add a prescription entry'],
   'billing': ['Billing Dumps', 'Monthly raw billing uploads'],
   'masters': ['Masters', 'Doctors, tests and agents'],
   'reports': ['Reports', 'Date-wise and monthly summaries'],
@@ -897,6 +893,7 @@ const NAV_ITEMS_ADMIN = [
   { id: 'settings', label: 'Settings', iconName: 'settings' },
 ];
 const NAV_ITEMS_SUPERADMIN = [ { id: 'sa-companies', label: 'Companies', iconName: 'building' } ];
+const NAV_ALIAS = { 'rx-form': 'prescriptions' }; // sub-pages that should still highlight a parent nav item
 
 function renderShellChrome() {
   $('#user-avatar').textContent = (state.user.name || '?').trim().slice(0,1).toUpperCase();
@@ -926,9 +923,8 @@ function renderCompanyChip() {
 }
 
 async function navigateTo(view, params) {
-  state.currentView = view;
   state.viewParams = params || {};
-  $$('#side-nav .nav-item').forEach(elm => elm.classList.toggle('active', elm.dataset.view === view));
+  $$('#side-nav .nav-item').forEach(elm => elm.classList.toggle('active', elm.dataset.view === (NAV_ALIAS[view] || view)));
   const titles = VIEW_TITLES[view] || ['CXDX', ''];
   $('#topbar-title').textContent = titles[0];
   $('#topbar-sub').textContent = titles[1];
@@ -1215,7 +1211,7 @@ async function renderDashboardView(content) {
   animateCountUp($('#cu-8'), stats.conversionPct, { pct: true });
   setTimeout(() => { $('#cu-8-bar').style.width = Math.min(100, stats.conversionPct) + '%'; }, 150);
 
-  $('#qa-entry').addEventListener('click', () => navigateTo('prescriptions', { openNew: true }));
+  $('#qa-entry').addEventListener('click', () => navigateTo('rx-form'));
   $('#qa-billing').addEventListener('click', () => navigateTo('billing'));
   $('#qa-match').addEventListener('click', async () => {
     showToast('Running matching…', 'info');
@@ -1263,15 +1259,17 @@ async function loadAllPrescriptions() {
 }
 function computeSummaryStats(rows) {
   const distinctVisits = new Set(rows.map(r => (r.uhid || '') + '|' + (r.date || '')));
-  const totalTestGiven = rows.length;
-  const matched = rows.filter(r => r.matchStatus === 'matched');
-  const prescriptionValue = rows.reduce((s, r) => s + toNum(r.testAmount), 0);
+  const testRows = rows.filter(r => r.matchStatus !== 'no-test');
+  const totalTestGiven = testRows.length;
+  const matched = testRows.filter(r => r.matchStatus === 'matched');
+  const prescriptionValue = testRows.reduce((s, r) => s + toNum(r.testAmount), 0);
   const conversionValue = matched.reduce((s, r) => s + toNum(r.matchedAmount), 0);
-  const leakageRows = rows.filter(r => r.matchStatus !== 'matched');
+  const leakageRows = testRows.filter(r => r.matchStatus !== 'matched');
   const leakageValue = leakageRows.reduce((s, r) => s + toNum(r.testAmount), 0);
   return {
     totalPrescription: distinctVisits.size, totalTestGiven, totalConversion: matched.length,
-    totalLeakageCount: totalTestGiven - matched.length, prescriptionValue, conversionValue, leakageValue,
+    totalLeakageCount: totalTestGiven - matched.length, totalNoTestCount: rows.length - testRows.length,
+    prescriptionValue, conversionValue, leakageValue,
     conversionPct: prescriptionValue > 0 ? (conversionValue / prescriptionValue) * 100 : 0,
     leakagePct: prescriptionValue > 0 ? (leakageValue / prescriptionValue) * 100 : 0,
   };
@@ -1287,13 +1285,13 @@ let rxPage = 1;
 const RX_PAGE_SIZE = 50;
 let rxFilterStatus = 'all', rxSearchTerm = '';
 
-async function renderPrescriptionsView(content, params) {
+async function renderPrescriptionsView(content) {
   $('#topbar-actions').innerHTML = `
     <button class="btn btn-secondary" id="rx-import-btn">${icon('uploadCloud')} Import</button>
     <button class="btn btn-secondary" id="rx-template-btn">${icon('download')} Template</button>
     <button class="btn btn-primary" id="rx-new-btn">${icon('plusCircle')} New Prescription</button>
   `;
-  $('#rx-new-btn').addEventListener('click', () => openPrescriptionModal());
+  $('#rx-new-btn').addEventListener('click', () => navigateTo('rx-form'));
   $('#rx-template-btn').addEventListener('click', downloadPrescriptionTemplate);
   $('#rx-import-btn').addEventListener('click', openBulkImportPrescriptionsModal);
 
@@ -1305,6 +1303,7 @@ async function renderPrescriptionsView(content, params) {
           <button class="pill active" data-f="all">All</button>
           <button class="pill" data-f="matched">Matched</button>
           <button class="pill" data-f="leakage">Leakage</button>
+          <button class="pill" data-f="no-test">No Test</button>
         </div>
       </div>
       <div class="table-wrap" id="rx-table-wrap"><div class="u-center" style="padding:60px 0;"><div class="loader-ring"></div></div></div>
@@ -1320,13 +1319,23 @@ async function renderPrescriptionsView(content, params) {
     $$('#rx-filter-pills .pill').forEach(x => x.classList.remove('active')); p.classList.add('active');
     rxFilterStatus = p.dataset.f; rxPage = 1; renderRxTable();
   }));
-  if (params && params.openNew) openPrescriptionModal();
 }
 
+function statusBadgeHtml(r) {
+  if (r.matchStatus === 'matched') return `<span class="badge matched">${icon('check')} Completed</span>`;
+  if (r.matchStatus === 'no-test') return `<span class="badge neutral">No Test</span>`;
+  return `<span class="badge leakage">${icon('alertTriangle')} Leakage</span>`;
+}
+function statusLabel(r) {
+  if (r.matchStatus === 'matched') return 'Completed';
+  if (r.matchStatus === 'no-test') return 'No Test';
+  return 'Leakage';
+}
 function getFilteredRx() {
   return state.prescriptions.filter(r => {
     if (rxFilterStatus === 'matched' && r.matchStatus !== 'matched') return false;
-    if (rxFilterStatus === 'leakage' && r.matchStatus === 'matched') return false;
+    if (rxFilterStatus === 'leakage' && r.matchStatus !== 'leakage') return false;
+    if (rxFilterStatus === 'no-test' && r.matchStatus !== 'no-test') return false;
     if (rxSearchTerm) { const hay = ((r.uhid || '') + ' ' + (r.patientName || '')).toUpperCase(); if (!hay.includes(rxSearchTerm)) return false; }
     return true;
   });
@@ -1344,7 +1353,7 @@ function renderRxTable() {
   const pageRows = filtered.slice((rxPage - 1) * RX_PAGE_SIZE, rxPage * RX_PAGE_SIZE);
   wrap.innerHTML = `<table><thead><tr><th>Date</th><th>UHID</th><th>Patient</th><th>Consultant</th><th>Test Given</th><th class="num">Amount</th><th>Status</th><th class="num">Matched Amt</th><th>Entered By</th>${customFieldsTableHeaderHtml()}<th></th></tr></thead><tbody>${pageRows.map(rxRowHtml).join('')}</tbody></table>`;
   pageRows.forEach(r => {
-    $('#edit-' + r.id).addEventListener('click', () => openPrescriptionModal(r));
+    $('#edit-' + r.id).addEventListener('click', () => navigateTo('rx-form', { editing: r }));
     $('#del-' + r.id).addEventListener('click', () => deletePrescriptionRow(r.id, r));
   });
   $('#rx-pager').innerHTML = `<span class="u-muted" style="font-size:12.5px;">${filtered.length} rows · Page ${rxPage} of ${totalPages}</span>
@@ -1358,16 +1367,26 @@ function rxRowHtml(r) {
   return `<tr>
     <td>${formatDateDisplay(r.date)}</td><td class="uhid-cell">${escapeHtml(r.uhid)}</td><td>${escapeHtml(r.patientName)}</td>
     <td>${escapeHtml(r.consultant || '—')}</td><td>${escapeHtml(r.testGiven)}</td><td class="num">${formatMoney(r.testAmount)}</td>
-    <td>${matched ? `<span class="badge matched">${icon('check')} Completed</span>` : `<span class="badge leakage">${icon('alertTriangle')} Leakage</span>`}</td>
+    <td>${statusBadgeHtml(r)}</td>
     <td class="num">${matched ? formatMoney(r.matchedAmount) : '—'}</td><td>${escapeHtml(r.enteredBy || '—')}</td>${customFieldsTableCellsHtml(r)}
     <td><div class="u-flex u-gap-8"><button class="icon-btn" id="edit-${r.id}">${icon('edit')}</button><button class="icon-btn danger" id="del-${r.id}">${icon('trash')}</button></div></td>
   </tr>`;
 }
 
 function testOptionsHtml(selectedName) {
-  let opts = state.tests.map(t => `<option value="${escapeHtml(t.name)}" data-amount="${t.amount}" ${t.name === selectedName ? 'selected' : ''}>${escapeHtml(t.name)}</option>`).join('');
-  if (selectedName && !state.tests.some(t => t.name === selectedName)) opts = `<option value="${escapeHtml(selectedName)}" selected>${escapeHtml(selectedName)} (custom)</option>` + opts;
+  const sel = selectedName || NO_TEST_LABEL;
+  let opts = `<option value="${NO_TEST_LABEL}"${sel === NO_TEST_LABEL ? ' selected' : ''}>${NO_TEST_LABEL}</option>`;
+  opts += state.tests.map(t => `<option value="${escapeHtml(t.name)}" data-amount="${t.amount}" ${t.name === sel ? 'selected' : ''}>${escapeHtml(t.name)}</option>`).join('');
+  if (sel !== NO_TEST_LABEL && !state.tests.some(t => t.name === sel)) opts += `<option value="${escapeHtml(sel)}" selected>${escapeHtml(sel)} (custom)</option>`;
   return opts;
+}
+function bindTestAmountToggle(selectEl, amountEl) {
+  selectEl.addEventListener('change', () => {
+    const opt = selectEl.selectedOptions[0];
+    const isNoTest = selectEl.value === NO_TEST_LABEL;
+    amountEl.disabled = isNoTest;
+    amountEl.value = isNoTest ? 0 : (opt && opt.dataset.amount !== undefined ? opt.dataset.amount : 0);
+  });
 }
 function doctorOptionsHtml(selected) {
   let opts = state.doctors.map(d => `<option value="${escapeHtml(d.name)}" ${d.name === selected ? 'selected' : ''}>${escapeHtml(d.name)}${d.specialization ? ' — ' + escapeHtml(d.specialization) : ''}</option>`).join('');
@@ -1400,7 +1419,7 @@ function customFieldInputHtml(f, value) {
 }
 function customFieldsFormHtml(existingCustom) {
   if (!CUSTOM_PRESCRIPTION_FIELDS.length) return '';
-  return `<div class="divider"></div><span class="section-label">Additional Details</span><div class="form-grid">${CUSTOM_PRESCRIPTION_FIELDS.map(f => `<div class="field-wrap"><label>${escapeHtml(f.label)}${f.required ? ' <span class="req">*</span>' : ''}</label>${customFieldInputHtml(f, existingCustom && existingCustom[f.key])}</div>`).join('')}</div>`;
+  return `<div class="card card-pad" style="margin-bottom:18px;"><span class="section-label"><span class="form-section-icon">${icon('edit')}</span>Additional Details</span><div class="form-grid" style="margin-top:14px;">${CUSTOM_PRESCRIPTION_FIELDS.map(f => `<div class="field-wrap"><label>${escapeHtml(f.label)}${f.required ? ' <span class="req">*</span>' : ''}</label>${customFieldInputHtml(f, existingCustom && existingCustom[f.key])}</div>`).join('')}</div></div>`;
 }
 function collectCustomFieldValues() {
   const custom = {};
@@ -1417,41 +1436,78 @@ function customFieldsTemplateHeaders() { return CUSTOM_PRESCRIPTION_FIELDS.map(f
 function customFieldsFromImportRow(r) { const custom = {}; CUSTOM_PRESCRIPTION_FIELDS.forEach(f => { custom[f.key] = f.type === 'number' ? toNum(r[f.label]) : (r[f.label] || '').toString().trim(); }); return custom; }
 function customFieldsExportValues(row) { const c = row.custom || {}; return CUSTOM_PRESCRIPTION_FIELDS.map(f => f.type === 'number' ? toNum(c[f.key]) : (c[f.key] || '')); }
 
-function openPrescriptionModal(existing) {
+async function renderPrescriptionFormView(content, params) {
+  const existing = params && params.editing;
   const isEdit = !!existing;
-  openModal(`
-    <div class="modal-head"><h3>${isEdit ? 'Edit Prescription' : 'New Prescription'}</h3><button class="icon-btn" id="m-x">${icon('x')}</button></div>
-    <div class="modal-body">
-      <div class="form-grid">
-        <div class="field-wrap"><label>Date <span class="req">*</span></label><input type="date" id="rx-date" value="${existing ? existing.date : todayISO()}"></div>
-        <div class="field-wrap"><label>UHID <span class="req">*</span></label><input type="text" id="rx-uhid" class="uhid-input" placeholder="e.g. UH20458" value="${existing ? escapeHtml(existing.uhid) : ''}"><span class="hint">No spaces, auto-capitalized</span></div>
-        <div class="field-wrap span-2"><label>Patient Name <span class="req">*</span></label><input type="text" id="rx-patient" value="${existing ? escapeHtml(existing.patientName) : ''}"></div>
-        <div class="field-wrap"><label>Consultant</label><select id="rx-consultant"><option value="">— Select —</option>${doctorOptionsHtml(existing && existing.consultant)}</select></div>
-        <div class="field-wrap"><label>Entered By</label><select id="rx-entered-by"><option value="">— Select —</option>${agentOptionsHtml(existing && existing.enteredBy)}</select></div>
-        <div class="field-wrap"><label>Consultation Follow Up</label><select id="rx-cfu"><option value="No" ${(!existing || existing.consultationFollowUp !== 'Yes') ? 'selected' : ''}>No</option><option value="Yes" ${existing && existing.consultationFollowUp === 'Yes' ? 'selected' : ''}>Yes</option></select></div>
-        ${isEdit ? `<div class="field-wrap"><label>Test Follow Up</label><select id="rx-tfu-single"><option value="No" ${existing.testFollowUp !== 'Yes' ? 'selected' : ''}>No</option><option value="Yes" ${existing.testFollowUp === 'Yes' ? 'selected' : ''}>Yes</option></select></div>` : '<div class="field-wrap"></div>'}
-        <div class="field-wrap span-2"><label>Remarks</label><textarea id="rx-remarks">${existing ? escapeHtml(existing.remarks || '') : ''}</textarea></div>
+  $('#topbar-title').textContent = isEdit ? 'Edit Prescription' : 'New Prescription';
+  $('#topbar-sub').textContent = isEdit ? `${existing.patientName} · ${existing.uhid}` : 'Add a prescription entry';
+  $('#topbar-actions').innerHTML = `<button class="btn btn-ghost" id="rxp-cancel">Cancel</button><button class="btn btn-primary" id="rxp-save">${icon('check')} ${isEdit ? 'Save Changes' : 'Save Prescription'}</button>`;
+
+  content.innerHTML = `
+    <div class="view form-page">
+      <div class="card card-pad" style="margin-bottom:18px;">
+        <span class="section-label"><span class="form-section-icon">${icon('fileText')}</span>Visit Details</span>
+        <div class="form-grid" style="margin-top:14px;">
+          <div class="field-wrap"><label>Date <span class="req">*</span></label><input type="date" id="rx-date" value="${existing ? existing.date : todayISO()}"></div>
+          <div class="field-wrap"><label>UHID <span class="req">*</span></label><input type="text" id="rx-uhid" class="uhid-input" placeholder="e.g. UH20458" value="${existing ? escapeHtml(existing.uhid) : ''}"><span class="hint">No spaces, auto-capitalized</span></div>
+          <div class="field-wrap span-2"><label>Patient Name <span class="req">*</span></label><input type="text" id="rx-patient" value="${existing ? escapeHtml(existing.patientName) : ''}"></div>
+          <div class="field-wrap"><label>Consultant</label><select id="rx-consultant"><option value="">— Select —</option>${doctorOptionsHtml(existing && existing.consultant)}</select></div>
+          <div class="field-wrap"><label>Entered By</label><select id="rx-entered-by"><option value="">— Select —</option>${agentOptionsHtml(existing && existing.enteredBy)}</select></div>
+          <div class="field-wrap span-2"><label>Consultation Follow Up</label><input type="date" id="rx-cfu" value="${existing && isValidISODate(existing.consultationFollowUp) ? existing.consultationFollowUp : ''}"><span class="hint">Leave blank if no follow-up is scheduled</span></div>
+        </div>
       </div>
-      <div class="divider"></div>
-      ${isEdit ? `
-        <span class="section-label">Test</span>
-        <div class="form-grid cols-3">
-          <div class="field-wrap span-2"><label>Test Given <span class="req">*</span></label><select id="rx-test-single">${testOptionsHtml(existing.testGiven)}</select></div>
-          <div class="field-wrap"><label>Amount <span class="req">*</span></label><input type="number" id="rx-amount-single" value="${existing.testAmount}"></div>
-        </div>` : `
-        <div class="section-label">Tests Given</div>
-        <div id="test-rows-container"></div>
-        <button type="button" class="btn btn-secondary btn-sm" id="add-test-row-btn">${icon('plus')} Add Another Test</button>`}
+
+      <div class="card card-pad" style="margin-bottom:18px;">
+        <div class="u-between">
+          <span class="section-label" style="margin-bottom:0;"><span class="form-section-icon">${icon('flask')}</span>Tests Given</span>
+          ${isEdit ? '' : `<span class="tests-summary-pill" id="tests-summary">0 tests · ${formatMoney(0)}</span>`}
+        </div>
+        <div style="margin-top:14px;">
+          ${isEdit ? `
+          <div class="form-grid cols-3">
+            <div class="field-wrap span-2"><label>Test Given <span class="req">*</span></label><select id="rx-test-single">${testOptionsHtml(existing.testGiven)}</select></div>
+            <div class="field-wrap"><label>Amount <span class="req">*</span></label><input type="number" id="rx-amount-single" value="${existing.testAmount}" ${existing.testGiven === NO_TEST_LABEL ? 'disabled' : ''}></div>
+          </div>
+          <div class="field-wrap" style="max-width:240px;margin-top:14px;"><label>Test Follow Up</label><input type="date" id="rx-tfu-single" value="${isValidISODate(existing.testFollowUp) ? existing.testFollowUp : ''}"><span class="hint">Leave blank if none scheduled</span></div>
+          ` : `
+          <div id="test-rows-container"></div>
+          <button type="button" class="btn btn-secondary btn-sm" id="add-test-row-btn">${icon('plus')} Add Another Test</button>
+          <p class="hint" style="margin-top:10px;">Tip: press Enter in any field of a test row to quickly add another.</p>
+          `}
+        </div>
+      </div>
+
       ${customFieldsFormHtml(existing && existing.custom)}
+
+      <div class="card card-pad">
+        <span class="section-label"><span class="form-section-icon">${icon('fileText')}</span>Remarks</span>
+        <textarea id="rx-remarks" style="margin-top:10px;" placeholder="Optional notes…">${existing ? escapeHtml(existing.remarks || '') : ''}</textarea>
+      </div>
     </div>
-    <div class="modal-foot"><button class="btn btn-ghost" id="m-cancel">Cancel</button><button class="btn btn-primary" id="rx-save">${icon('check')} ${isEdit ? 'Save Changes' : 'Save Prescription'}</button></div>
-  `, { wide: true });
+  `;
 
-  $('#m-x').onclick = closeModal; $('#m-cancel').onclick = closeModal;
+  $('#rxp-cancel').addEventListener('click', () => navigateTo('prescriptions'));
   bindUhidNormalize($('#rx-uhid'));
-  if (!isEdit) { addTestRow(); $('#add-test-row-btn').addEventListener('click', () => addTestRow()); }
 
-  $('#rx-save').onclick = async () => {
+  if (!isEdit) {
+    addTestRow();
+    updateTestsSummary();
+    $('#add-test-row-btn').addEventListener('click', () => { const row = addTestRow(); updateTestsSummary(); if (row) row.querySelector('.tr-test').focus(); });
+    $('#test-rows-container').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.target.type !== 'date') {
+        e.preventDefault();
+        const row = addTestRow();
+        updateTestsSummary();
+        if (row) row.querySelector('.tr-test').focus();
+      }
+    });
+    $('#test-rows-container').addEventListener('input', updateTestsSummary);
+    $('#rx-uhid').focus();
+  } else {
+    bindTestAmountToggle($('#rx-test-single'), $('#rx-amount-single'));
+  }
+
+  $('#rxp-save').addEventListener('click', async () => {
     const date = $('#rx-date').value;
     const uhidVal = normalizeUHID($('#rx-uhid').value);
     const patientName = $('#rx-patient').value.trim();
@@ -1461,7 +1517,7 @@ function openPrescriptionModal(existing) {
     const custom = collectCustomFieldValues();
     const customErr = validateCustomFieldValues(custom);
     if (customErr) { showToast(customErr, 'error'); return; }
-    const btn = $('#rx-save'); setBtnLoading(btn, true);
+    const btn = $('#rxp-save'); setBtnLoading(btn, true);
     try {
       if (isEdit) {
         const testGiven = $('#rx-test-single').value, testAmount = toNum($('#rx-amount-single').value), tfu = $('#rx-tfu-single').value;
@@ -1483,28 +1539,44 @@ function openPrescriptionModal(existing) {
         await batch.commit();
         showToast(`${docs.length} prescription row(s) saved`, 'success');
       }
-      closeModal();
       await runMatching();
       navigateTo('prescriptions');
     } catch (err) {
       showToast(friendlyError(err), 'error');
       setBtnLoading(btn, false, `${icon('check')} ${isEdit ? 'Save Changes' : 'Save Prescription'}`);
     }
-  };
+  });
+}
+function updateTestsSummary() {
+  const pill = $('#tests-summary');
+  if (!pill) return;
+  const rows = $$('#test-rows-container .test-row');
+  const realRows = rows.filter(r => r.querySelector('.tr-test').value !== NO_TEST_LABEL);
+  const total = rows.reduce((s, r) => s + toNum(r.querySelector('.tr-amount').value), 0);
+  pill.textContent = `${realRows.length} test${realRows.length === 1 ? '' : 's'} · ${formatMoney(total)}`;
+}
+function renumberTestRows() {
+  $$('#test-rows-container .test-row').forEach((row, i) => { const badge = row.querySelector('.row-num'); if (badge) badge.textContent = i + 1; });
 }
 function addTestRow() {
   const container = $('#test-rows-container');
   const div = document.createElement('div');
   div.className = 'test-row';
   div.innerHTML = `
+    <span class="row-num">${container.children.length + 1}</span>
     <div class="field-wrap"><label>Test Given</label><select class="tr-test">${testOptionsHtml()}</select></div>
-    <div class="field-wrap"><label>Amount</label><input type="number" class="tr-amount" value="${state.tests[0] ? state.tests[0].amount : 0}"></div>
-    <div class="field-wrap"><label>Test Follow Up</label><select class="tr-tfu"><option value="No">No</option><option value="Yes">Yes</option></select></div>
+    <div class="field-wrap"><label>Amount</label><input type="number" class="tr-amount" value="0" disabled></div>
+    <div class="field-wrap"><label>Test Follow Up</label><input type="date" class="tr-tfu"></div>
     <button type="button" class="icon-btn danger tr-remove">${icon('x')}</button>`;
   container.appendChild(div);
   const select = div.querySelector('.tr-test'), amountInput = div.querySelector('.tr-amount');
-  select.addEventListener('change', () => { const opt = select.selectedOptions[0]; if (opt) amountInput.value = opt.dataset.amount || 0; });
-  div.querySelector('.tr-remove').addEventListener('click', () => { if ($$('#test-rows-container .test-row').length > 1) div.remove(); else showToast('At least one test is required', 'error'); });
+  bindTestAmountToggle(select, amountInput);
+  select.addEventListener('change', updateTestsSummary);
+  div.querySelector('.tr-remove').addEventListener('click', () => {
+    if ($$('#test-rows-container .test-row').length > 1) { div.remove(); renumberTestRows(); updateTestsSummary(); }
+    else showToast('At least one test is required', 'error');
+  });
+  return div;
 }
 
 async function deletePrescriptionRow(id, row) {
@@ -1517,7 +1589,7 @@ async function deletePrescriptionRow(id, row) {
 function downloadPrescriptionTemplate() {
   const headers = PRESCRIPTION_TEMPLATE_HEADERS.concat(customFieldsTemplateHeaders());
   const sampleCustom = CUSTOM_PRESCRIPTION_FIELDS.map(f => f.type === 'number' ? 0 : (f.options ? f.options[0] : 'Sample'));
-  const ws = XLSX.utils.aoa_to_sheet([headers, ['2026-01-15', 'UH20458', 'Jane Doe', 'Dr. A Rahman', 'CBC Test', 500, 'No', 'No', '', 'Agent Name'].concat(sampleCustom)]);
+  const ws = XLSX.utils.aoa_to_sheet([headers, ['2026-01-15', 'UH20458', 'Jane Doe', 'Dr. A Rahman', 'CBC Test', 500, '', '2026-02-01', '', 'Agent Name'].concat(sampleCustom)]);
   ws['!cols'] = headers.map(() => ({ wch: 22 }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Prescriptions');
@@ -1547,19 +1619,22 @@ function openBulkImportPrescriptionsModal() {
     $('#bi-fname').textContent = file.name;
     try {
       const data = await readFileAsRows(file);
-      parsedRows = data.rows.map(r => ({
-        date: parseFlexibleDate(r['Date (YYYY-MM-DD)'] || r['Date']),
-        uhid: normalizeUHID(r['UHID']),
-        patientName: (r['Patient Name'] || '').toString().trim(),
-        consultant: (r['Consultant'] || '').toString().trim(),
-        testGiven: (r['Test Given'] || '').toString().trim(),
-        testAmount: toNum(r['Test Amount']),
-        consultationFollowUp: (r['Consultation Follow Up (Yes/No)'] || 'No').toString().trim() || 'No',
-        testFollowUp: (r['Test Follow Up (Yes/No)'] || 'No').toString().trim() || 'No',
-        remarks: (r['Remarks'] || '').toString().trim(),
-        enteredBy: (r['Entered By'] || '').toString().trim(),
-        custom: customFieldsFromImportRow(r),
-      })).filter(r => r.uhid && r.date);
+      parsedRows = data.rows.map(r => {
+        const testGiven = (r['Test Given'] || '').toString().trim() || NO_TEST_LABEL;
+        return {
+          date: parseFlexibleDate(r['Date (YYYY-MM-DD)'] || r['Date']),
+          uhid: normalizeUHID(r['UHID']),
+          patientName: (r['Patient Name'] || '').toString().trim(),
+          consultant: (r['Consultant'] || '').toString().trim(),
+          testGiven,
+          testAmount: testGiven === NO_TEST_LABEL ? 0 : toNum(r['Test Amount']),
+          consultationFollowUp: parseFlexibleDate(r['Consultation Follow Up Date (YYYY-MM-DD, optional)']) || '',
+          testFollowUp: parseFlexibleDate(r['Test Follow Up Date (YYYY-MM-DD, optional)']) || '',
+          remarks: (r['Remarks'] || '').toString().trim(),
+          enteredBy: (r['Entered By'] || '').toString().trim(),
+          custom: customFieldsFromImportRow(r),
+        };
+      }).filter(r => r.uhid && r.date);
       $('#bi-preview').innerHTML = parsedRows.length
         ? `<div class="badge matched" style="margin-bottom:8px;">${icon('check')} ${parsedRows.length} valid rows detected</div><div class="table-wrap" style="max-height:220px;overflow-y:auto;"><table><thead><tr><th>Date</th><th>UHID</th><th>Patient</th><th>Test</th><th class="num">Amount</th></tr></thead><tbody>${parsedRows.slice(0, 8).map(r => `<tr><td>${formatDateDisplay(r.date)}</td><td class="uhid-cell">${escapeHtml(r.uhid)}</td><td>${escapeHtml(r.patientName)}</td><td>${escapeHtml(r.testGiven)}</td><td class="num">${formatMoney(r.testAmount)}</td></tr>`).join('')}</tbody></table></div>${parsedRows.length > 8 ? `<p class="u-muted" style="font-size:12px;margin-top:6px;">+ ${parsedRows.length - 8} more rows</p>` : ''}`
         : `<div class="badge leakage">${icon('alertTriangle')} No valid rows found — check the Date and UHID columns are filled in</div>`;
@@ -1588,6 +1663,7 @@ async function bulkImportPrescriptions(rows) {
 }
 
 VIEW_RENDERERS['prescriptions'] = renderPrescriptionsView;
+VIEW_RENDERERS['rx-form'] = renderPrescriptionFormView;
 
 /* ---- SECTION: MASTERS ---- */
 let mastersActiveTab = 'doctors';
@@ -1766,7 +1842,6 @@ async function renderBillingView(content) {
   content.innerHTML = `<div class="view"><div id="bv-list"><div class="u-center" style="padding:60px 0;"><div class="loader-ring"></div></div></div></div>`;
   const snap = await getDocs(query(collection(db, 'companies', state.companyId, 'billingDumps'), orderBy('monthKey', 'desc')));
   const dumps = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  state.billingDumps = dumps;
   const list = $('#bv-list');
   if (!dumps.length) { list.innerHTML = `<div class="empty-state">${icon('uploadCloud')}<h4>No billing dumps uploaded yet</h4><p>Upload your first month's raw billing export to start matching it against prescriptions.</p></div>`; return; }
   list.innerHTML = dumps.map(d => `
@@ -1917,7 +1992,8 @@ async function runMatching() {
     const rowsSnap = await getDocs(collection(db, 'companies', state.companyId, 'billingDumps', dDoc.id, 'rows'));
     rowsSnap.docs.forEach(r => billingRows.push({ id: r.id, ref: r.ref, ...r.data() }));
   }
-  const windowDays = (state.matchingConfig && state.matchingConfig.windowDays) || 1;
+  const rawWindow = state.matchingConfig && state.matchingConfig.windowDays;
+  const windowDays = (rawWindow === undefined || rawWindow === null) ? 1 : rawWindow; // -1 means "unlimited"
   const byUhid = {};
   billingRows.forEach(b => { (byUhid[b.uhid] = byUhid[b.uhid] || []).push(b); });
   Object.values(byUhid).forEach(list => list.sort((a, b) => (a.date < b.date ? -1 : 1)));
@@ -1927,8 +2003,14 @@ async function runMatching() {
   const sortedPresc = prescriptions.slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
   for (const p of sortedPresc) {
-    const windowEnd = addDaysISO(p.date, windowDays);
-    const candidates = (byUhid[p.uhid] || []).filter(b => !usedBillingIds.has(b.id) && b.date >= p.date && b.date <= windowEnd);
+    if (p.testGiven === NO_TEST_LABEL) {
+      // Nothing was prescribed on this visit — not part of conversion tracking at all.
+      prescUpdates.push({ ref: p.ref, data: { matchStatus: 'no-test', matchedAmount: 0, matchedBillingRef: null } });
+      continue;
+    }
+    const isUnlimited = windowDays === -1;
+    const windowEnd = isUnlimited ? null : addDaysISO(p.date, windowDays);
+    const candidates = (byUhid[p.uhid] || []).filter(b => !usedBillingIds.has(b.id) && b.date >= p.date && (isUnlimited || b.date <= windowEnd));
     let chosen = null;
     const candidatesWithTestName = candidates.filter(c => c.testName && c.testName.trim());
     if (candidatesWithTestName.length && p.testGiven) {
@@ -1959,7 +2041,8 @@ async function runMatching() {
   if (n > 0) await batch.commit();
 
   const matchedCount = prescUpdates.filter(u => u.data.matchStatus === 'matched').length;
-  return { matchedCount, leakageCount: prescUpdates.length - matchedCount, total: prescUpdates.length };
+  const noTestCount = prescUpdates.filter(u => u.data.matchStatus === 'no-test').length;
+  return { matchedCount, leakageCount: prescUpdates.length - matchedCount - noTestCount, noTestCount, total: prescUpdates.length };
 }
 
 VIEW_RENDERERS['billing'] = renderBillingView;
@@ -2018,8 +2101,8 @@ function renderDateWiseTable(rows) {
   draw();
 }
 function dwRowHtml(r) {
-  const matched = r.matchStatus === 'matched';
-  return `<tr><td>${formatDateDisplay(r.date)}</td><td class="uhid-cell">${escapeHtml(r.uhid)}</td><td>${escapeHtml(r.patientName)}</td><td>${escapeHtml(r.consultant || '—')}</td><td>${escapeHtml(r.testGiven)}</td><td class="num">${formatMoney(r.testAmount)}</td><td>${matched ? `<span class="badge matched">${icon('check')} Completed</span>` : `<span class="badge leakage">${icon('alertTriangle')} Leakage</span>`}</td><td class="num">${matched ? formatMoney(r.matchedAmount) : '—'}</td><td class="num">${matched ? '—' : formatMoney(r.testAmount)}</td><td>${escapeHtml(r.enteredBy || '—')}</td>${customFieldsTableCellsHtml(r)}</tr>`;
+  const matched = r.matchStatus === 'matched', noTest = r.matchStatus === 'no-test';
+  return `<tr><td>${formatDateDisplay(r.date)}</td><td class="uhid-cell">${escapeHtml(r.uhid)}</td><td>${escapeHtml(r.patientName)}</td><td>${escapeHtml(r.consultant || '—')}</td><td>${escapeHtml(r.testGiven)}</td><td class="num">${formatMoney(r.testAmount)}</td><td>${statusBadgeHtml(r)}</td><td class="num">${matched ? formatMoney(r.matchedAmount) : '—'}</td><td class="num">${matched || noTest ? '—' : formatMoney(r.testAmount)}</td><td>${escapeHtml(r.enteredBy || '—')}</td>${customFieldsTableCellsHtml(r)}</tr>`;
 }
 
 function exportReportsExcel(monthly, overall, rows) {
@@ -2031,7 +2114,7 @@ function exportReportsExcel(monthly, overall, rows) {
   ];
   const dateWiseAoa = [
     ['Date', 'UHID', 'Patient Name', 'Consultant', 'Test Given', 'Test Amount', 'Status', 'Matched Amount', 'Leakage Amount', 'Entered By', 'Remarks'].concat(customFieldsTemplateHeaders()),
-    ...rows.map(r => [r.date, r.uhid, r.patientName, r.consultant || '', r.testGiven, toNum(r.testAmount), r.matchStatus === 'matched' ? 'Completed' : 'Leakage', r.matchStatus === 'matched' ? toNum(r.matchedAmount) : 0, r.matchStatus === 'matched' ? 0 : toNum(r.testAmount), r.enteredBy || '', r.remarks || ''].concat(customFieldsExportValues(r))),
+    ...rows.map(r => [r.date, r.uhid, r.patientName, r.consultant || '', r.testGiven, toNum(r.testAmount), statusLabel(r), r.matchStatus === 'matched' ? toNum(r.matchedAmount) : 0, r.matchStatus === 'leakage' ? toNum(r.testAmount) : 0, r.enteredBy || '', r.remarks || ''].concat(customFieldsExportValues(r))),
   ];
   const wb = XLSX.utils.book_new();
   const ws1 = XLSX.utils.aoa_to_sheet(summaryAoa); ws1['!cols'] = summaryAoa[0].map(() => ({ wch: 19 }));
@@ -2058,10 +2141,14 @@ async function renderSettingsView(content) {
     <div class="card card-pad" style="margin-bottom:20px;">
       <h3 style="font-family:var(--font-display);font-weight:600;font-size:15px;margin-bottom:4px;">Matching Rules</h3>
       <p class="u-muted" style="font-size:12.5px;margin-bottom:16px;">Controls how prescriptions are matched to billing dump rows for ${escapeHtml(state.companyName)}.</p>
-      <div class="field-wrap" style="max-width:280px;margin-bottom:14px;">
+      <div class="field-wrap" style="max-width:320px;margin-bottom:10px;">
         <label>Matching Window (days after prescription date)</label>
-        <input type="number" id="st-window" min="0" max="30" value="${cfg.windowDays}">
+        <input type="number" id="st-window" min="0" max="365" value="${cfg.windowDays === -1 ? '' : cfg.windowDays}" ${cfg.windowDays === -1 ? 'disabled' : ''}>
         <span class="hint">0 = same day only · 1 = same day or next day</span>
+      </div>
+      <div class="checkbox-row" style="margin-bottom:16px;">
+        <input type="checkbox" id="st-window-unlimited" ${cfg.windowDays === -1 ? 'checked' : ''}>
+        <label for="st-window-unlimited" style="margin:0;font-weight:500;">Unlimited — match any billing date on or after the prescription date</label>
       </div>
       <button class="btn btn-primary btn-sm" id="st-save-window">${icon('check')} Save &amp; Re-run Matching</button>
       <div class="divider"></div>
@@ -2077,9 +2164,12 @@ async function renderSettingsView(content) {
     </div>
   </div>`;
 
+  $('#st-window-unlimited').addEventListener('change', (e) => { $('#st-window').disabled = e.target.checked; });
+
   $('#st-save-window').addEventListener('click', async () => {
-    const days = parseInt($('#st-window').value, 10);
-    if (isNaN(days) || days < 0) { showToast('Enter a valid number of days', 'error'); return; }
+    const unlimited = $('#st-window-unlimited').checked;
+    const days = unlimited ? -1 : parseInt($('#st-window').value, 10);
+    if (!unlimited && (isNaN(days) || days < 0)) { showToast('Enter a valid number of days, or check Unlimited', 'error'); return; }
     const btn = $('#st-save-window'); setBtnLoading(btn, true);
     try {
       const newConfig = Object.assign({}, state.matchingConfig, { windowDays: days });
