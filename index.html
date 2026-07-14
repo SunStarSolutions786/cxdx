@@ -579,7 +579,7 @@ const state = {
   companyName: '',
   companyActive: true,
   matchingConfig: null,  // {windowDays, billingMap:{uhid,date,amount,testName,patientName}}
-  doctors: [], tests: [], agents: [],
+  doctors: [], tests: [], agents: [], customFields: [],
   prescriptions: [],     // cache for current filtered view
   viewParams: {},
   isSuperAdmin: false,
@@ -603,15 +603,16 @@ const MASTER_DEFS = {
 
 const PRESCRIPTION_TEMPLATE_HEADERS = ['Date (YYYY-MM-DD)','UHID','Patient Name','Consultant','Test Given','Test Amount','Consultation Follow Up Date (YYYY-MM-DD, optional)','Test Follow Up Date (YYYY-MM-DD, optional)','Remarks','Entered By'];
 const NO_TEST_LABEL = 'No Test Given'; // sentinel for a visit where the doctor prescribed no test — excluded from test/conversion stats but still counts as a prescription visit
-
-// Add extra prescription fields here without touching the matching engine or
-// any other logic — each entry automatically appears in the New/Edit
-// Prescription form, the Prescriptions and Reports tables, the Excel
-// template + bulk import, and the Excel export. Supported `type`s: 'text',
-// 'number', 'date', 'yesno', and 'select' (needs an `options` array).
-// Example:
-// { key: 'referralSource', label: 'Referral Source', type: 'select', options: ['Walk-in','Doctor Referral','Online'], required: false },
-const CUSTOM_PRESCRIPTION_FIELDS = [
+// Custom prescription fields are per-company, defined from Settings, and live in
+// state.customFields (loaded from companies/{companyId}.customFields) — not a
+// global constant, so each company can have its own set. Supported field
+// `type`s: 'text', 'number', 'date', 'yesno', and 'select' (needs an `options` array).
+const CUSTOM_FIELD_TYPES = [
+  { value: 'text', label: 'Text' },
+  { value: 'number', label: 'Number' },
+  { value: 'date', label: 'Date' },
+  { value: 'yesno', label: 'Yes/No' },
+  { value: 'select', label: 'Dropdown' },
 ];
 
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -818,6 +819,7 @@ async function loadCompanyContext(companyId) {
   state.companyName = data.name;
   state.companyActive = data.active !== false;
   state.matchingConfig = Object.assign({}, DEFAULT_MATCHING_CONFIG, data.matchingConfig || {}, { billingMap: Object.assign({}, DEFAULT_MATCHING_CONFIG.billingMap, (data.matchingConfig || {}).billingMap || {}) });
+  state.customFields = Array.isArray(data.customFields) ? data.customFields : [];
   await loadMasters();
 }
 
@@ -1023,7 +1025,7 @@ function openCreateCompanyModal() {
   };
 }
 async function createCompany(name) {
-  const ref = await addDoc(collection(db, 'companies'), { name, active: true, createdAt: serverTimestamp(), matchingConfig: DEFAULT_MATCHING_CONFIG });
+  const ref = await addDoc(collection(db, 'companies'), { name, active: true, createdAt: serverTimestamp(), matchingConfig: DEFAULT_MATCHING_CONFIG, customFields: [] });
   return ref.id;
 }
 async function createCompanyAdmin(companyId, name, email, password) {
@@ -1122,7 +1124,7 @@ async function enterCompany(companyId) {
 }
 function exitCompany() {
   state.companyId = null; state.companyName = ''; state.matchingConfig = null;
-  state.doctors = []; state.tests = []; state.agents = [];
+  state.doctors = []; state.tests = []; state.agents = []; state.customFields = [];
   renderShellChrome();
   navigateTo('sa-companies');
 }
@@ -1441,7 +1443,7 @@ function bindUhidNormalize(inputEl) {
   });
 }
 
-// ---- Custom prescription fields (config in CUSTOM_PRESCRIPTION_FIELDS) ----
+// ---- Custom prescription fields (per-company, defined in Settings, live in state.customFields) ----
 function customFieldInputHtml(f, value) {
   const val = (value !== undefined && value !== null) ? value : '';
   if (f.type === 'select') return `<select id="cf-${f.key}">${f.required ? '' : '<option value="">— Select —</option>'}${(f.options || []).map(o => `<option value="${escapeHtml(o)}" ${o === val ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}</select>`;
@@ -1451,23 +1453,29 @@ function customFieldInputHtml(f, value) {
   return `<input type="text" id="cf-${f.key}" value="${escapeHtml(val)}">`;
 }
 function customFieldsFormHtml(existingCustom) {
-  if (!CUSTOM_PRESCRIPTION_FIELDS.length) return '';
-  return `<div class="card card-pad" style="margin-bottom:18px;"><span class="section-label"><span class="form-section-icon">${icon('edit')}</span>Additional Details</span><div class="form-grid" style="margin-top:14px;">${CUSTOM_PRESCRIPTION_FIELDS.map(f => `<div class="field-wrap"><label>${escapeHtml(f.label)}${f.required ? ' <span class="req">*</span>' : ''}</label>${customFieldInputHtml(f, existingCustom && existingCustom[f.key])}</div>`).join('')}</div></div>`;
+  if (!state.customFields.length) return '';
+  return `<div class="card card-pad" style="margin-bottom:18px;"><span class="section-label"><span class="form-section-icon">${icon('edit')}</span>Additional Details</span><div class="form-grid" style="margin-top:14px;">${state.customFields.map(f => `<div class="field-wrap"><label>${escapeHtml(f.label)}${f.required ? ' <span class="req">*</span>' : ''}</label>${customFieldInputHtml(f, existingCustom && existingCustom[f.key])}</div>`).join('')}</div></div>`;
 }
 function collectCustomFieldValues() {
   const custom = {};
-  CUSTOM_PRESCRIPTION_FIELDS.forEach(f => { const el = document.getElementById('cf-' + f.key); if (el) custom[f.key] = f.type === 'number' ? toNum(el.value) : el.value; });
+  state.customFields.forEach(f => { const el = document.getElementById('cf-' + f.key); if (el) custom[f.key] = f.type === 'number' ? toNum(el.value) : el.value; });
   return custom;
 }
 function validateCustomFieldValues(custom) {
-  for (const f of CUSTOM_PRESCRIPTION_FIELDS) if (f.required && !custom[f.key] && custom[f.key] !== 0) return f.label + ' is required';
+  for (const f of state.customFields) if (f.required && !custom[f.key] && custom[f.key] !== 0) return f.label + ' is required';
   return null;
 }
-function customFieldsTableHeaderHtml() { return CUSTOM_PRESCRIPTION_FIELDS.map(f => `<th${f.type === 'number' ? ' class="num"' : ''}>${escapeHtml(f.label)}</th>`).join(''); }
-function customFieldsTableCellsHtml(row) { const c = row.custom || {}; return CUSTOM_PRESCRIPTION_FIELDS.map(f => `<td${f.type === 'number' ? ' class="num"' : ''}>${f.type === 'number' ? formatNum(c[f.key] || 0) : escapeHtml(c[f.key] || '—')}</td>`).join(''); }
-function customFieldsTemplateHeaders() { return CUSTOM_PRESCRIPTION_FIELDS.map(f => f.label); }
-function customFieldsFromImportRow(r) { const custom = {}; CUSTOM_PRESCRIPTION_FIELDS.forEach(f => { custom[f.key] = f.type === 'number' ? toNum(r[f.label]) : (r[f.label] || '').toString().trim(); }); return custom; }
-function customFieldsExportValues(row) { const c = row.custom || {}; return CUSTOM_PRESCRIPTION_FIELDS.map(f => f.type === 'number' ? toNum(c[f.key]) : (c[f.key] || '')); }
+function customFieldsTableHeaderHtml() { return state.customFields.map(f => `<th${f.type === 'number' ? ' class="num"' : ''}>${escapeHtml(f.label)}</th>`).join(''); }
+function customFieldsTableCellsHtml(row) { const c = row.custom || {}; return state.customFields.map(f => `<td${f.type === 'number' ? ' class="num"' : ''}>${f.type === 'number' ? formatNum(c[f.key] || 0) : escapeHtml(c[f.key] || '—')}</td>`).join(''); }
+function customFieldsTemplateHeaders() { return state.customFields.map(f => f.label); }
+function customFieldsFromImportRow(r) { const custom = {}; state.customFields.forEach(f => { custom[f.key] = f.type === 'number' ? toNum(r[f.label]) : (r[f.label] || '').toString().trim(); }); return custom; }
+function customFieldsExportValues(row) { const c = row.custom || {}; return state.customFields.map(f => f.type === 'number' ? toNum(c[f.key]) : (c[f.key] || '')); }
+function slugifyFieldKey(label, existingFields) {
+  const base = label.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'field';
+  let key = base, n = 2;
+  while ((existingFields || []).some(f => f.key === key)) { key = base + '_' + n; n++; }
+  return key;
+}
 
 async function renderPrescriptionFormView(content, params) {
   const existing = params && params.editing;
@@ -1625,7 +1633,7 @@ async function deletePrescriptionRow(id, row) {
 
 function downloadPrescriptionTemplate() {
   const headers = PRESCRIPTION_TEMPLATE_HEADERS.concat(customFieldsTemplateHeaders());
-  const sampleCustom = CUSTOM_PRESCRIPTION_FIELDS.map(f => f.type === 'number' ? 0 : (f.options ? f.options[0] : 'Sample'));
+  const sampleCustom = state.customFields.map(f => f.type === 'number' ? 0 : (f.options ? f.options[0] : 'Sample'));
   const ws = XLSX.utils.aoa_to_sheet([headers, ['2026-01-15', 'UH20458', 'Jane Doe', 'Dr. A Rahman', 'CBC Test', 500, '', '2026-02-01', '', 'Agent Name'].concat(sampleCustom)]);
   ws['!cols'] = headers.map(() => ({ wch: 22 }));
   const wb = XLSX.utils.book_new();
@@ -1864,10 +1872,10 @@ function detectColumnMapping(headers, savedMap) {
   const guess = { uhid: '', date: '', amount: '', testName: '', patientName: '' };
   const lower = headers.map(h => (h || '').toString().toLowerCase());
   function find(patterns) { for (const p of patterns) { const idx = lower.findIndex(h => h.includes(p)); if (idx !== -1) return headers[idx]; } return ''; }
-  guess.uhid = find(['uhid', 'patient id', 'patientid', 'uh id', 'mrn', 'reg no', 'registration']);
+  guess.uhid = find(['uhid', 'patient id', 'patientid', 'uh id', 'mrn', 'mr no', 'mr number', 'medical record', 'reg no', 'registration']);
   guess.date = find(['date', 'bill date', 'visit date', 'txn date']);
-  guess.amount = find(['amount', 'value', 'bill amt', 'billed', 'net amount', 'total']);
-  guess.testName = find(['test name', 'test', 'item', 'service', 'procedure']);
+  guess.amount = find(['amount', 'value', 'bill amt', 'billed', 'net amount', 'total', 'charges', 'fee']);
+  guess.testName = find(['test name', 'test', 'item', 'service', 'procedure', 'particulars', 'description']);
   guess.patientName = find(['patient name', 'patient', 'name']);
   if (savedMap) Object.keys(guess).forEach(k => { if (savedMap[k] && headers.includes(savedMap[k])) guess[k] = savedMap[k]; });
   return guess;
@@ -2190,8 +2198,17 @@ async function renderSettingsView(content) {
       <button class="btn btn-primary btn-sm" id="st-save-window">${icon('check')} Save &amp; Re-run Matching</button>
       <div class="divider"></div>
       <span class="section-label">Current Billing Column Mapping</span>
-      <p class="u-muted" style="font-size:12px;margin-bottom:10px;">Updates automatically each time a billing dump is uploaded for this company.</p>
+      <p class="u-muted" style="font-size:12px;margin-bottom:10px;line-height:1.5;">Your billing file's columns don't need to be named exactly like this — during upload you map whatever your file calls them (e.g. "MR Number" or "Patient ID") to these standard fields once, and it's remembered for next time.</p>
+      <div class="u-between" style="padding:4px 0;font-size:10.5px;font-weight:700;color:var(--slate-400);text-transform:uppercase;letter-spacing:0.4px;"><span>CXDX Field</span><span>Your File's Column</span></div>
       ${Object.keys(mapLabels).map(k => `<div class="u-between" style="padding:7px 0;border-bottom:1px solid var(--line-100);font-size:13px;"><span class="u-muted">${mapLabels[k]}</span><span style="font-weight:600;">${cfg.billingMap && cfg.billingMap[k] ? escapeHtml(cfg.billingMap[k]) : '—'}</span></div>`).join('')}
+    </div>
+    <div class="card card-pad" style="margin-bottom:20px;">
+      <div class="u-between" style="margin-bottom:4px;">
+        <h3 style="font-family:var(--font-display);font-weight:600;font-size:15px;">Custom Prescription Fields</h3>
+        <button class="btn btn-secondary btn-sm" id="cf-add-btn">${icon('plus')} Add Field</button>
+      </div>
+      <p class="u-muted" style="font-size:12.5px;margin-bottom:12px;">Extra fields shown only on ${escapeHtml(state.companyName)}'s prescription form, table, template, and export — other companies aren't affected.</p>
+      <div id="cf-list">${state.customFields.length ? state.customFields.map(customFieldRowHtml).join('') : `<p class="u-muted" style="font-size:13px;padding:6px 0;">No custom fields yet for this company.</p>`}</div>
     </div>
     <div class="card card-pad">
       <h3 style="font-family:var(--font-display);font-weight:600;font-size:15px;margin-bottom:14px;">Change Password</h3>
@@ -2218,6 +2235,14 @@ async function renderSettingsView(content) {
     } catch (err) { showToast(friendlyError(err), 'error'); setBtnLoading(btn, false, `${icon('check')} Save & Re-run Matching`); }
   });
 
+  $('#cf-add-btn').addEventListener('click', () => openCustomFieldModal());
+  state.customFields.forEach(f => {
+    const editBtn = document.getElementById('cf-edit-' + f.key);
+    const delBtn = document.getElementById('cf-del-' + f.key);
+    if (editBtn) editBtn.addEventListener('click', () => openCustomFieldModal(f));
+    if (delBtn) delBtn.addEventListener('click', () => deleteCustomField(f));
+  });
+
   $('#st-change-pass').addEventListener('click', async () => {
     const cur = $('#st-cur-pass').value, next = $('#st-new-pass').value;
     if (!cur || !next) { showToast('Fill in both fields', 'error'); return; }
@@ -2230,6 +2255,73 @@ async function renderSettingsView(content) {
       setBtnLoading(btn, false, `${icon('key')} Update Password`);
     } catch (err) { showToast(friendlyError(err), 'error'); setBtnLoading(btn, false, `${icon('key')} Update Password`); }
   });
+}
+
+function customFieldRowHtml(f) {
+  const typeLabel = (CUSTOM_FIELD_TYPES.find(t => t.value === f.type) || {}).label || f.type;
+  return `<div class="u-between" style="padding:9px 0;border-bottom:1px solid var(--line-100);">
+    <div style="min-width:0;"><span style="font-weight:600;font-size:13.5px;">${escapeHtml(f.label)}</span> <span class="badge neutral">${escapeHtml(typeLabel)}</span>${f.required ? ` <span class="badge leakage">Required</span>` : ''}</div>
+    <div class="u-flex u-gap-8"><button class="icon-btn" id="cf-edit-${f.key}">${icon('edit')}</button><button class="icon-btn danger" id="cf-del-${f.key}">${icon('trash')}</button></div>
+  </div>`;
+}
+
+function openCustomFieldModal(existing) {
+  const isEdit = !!existing;
+  openModal(`
+    <div class="modal-head"><h3>${isEdit ? 'Edit' : 'Add'} Custom Field</h3><button class="icon-btn" id="m-x">${icon('x')}</button></div>
+    <div class="modal-body">
+      <div class="field-wrap" style="margin-bottom:14px;"><label>Field Label <span class="req">*</span></label><input type="text" id="cfm-label" placeholder="e.g. Referral Source" value="${existing ? escapeHtml(existing.label) : ''}"></div>
+      <div class="field-wrap" style="margin-bottom:14px;"><label>Type</label><select id="cfm-type">${CUSTOM_FIELD_TYPES.map(t => `<option value="${t.value}" ${existing && existing.type === t.value ? 'selected' : ''}>${t.label}</option>`).join('')}</select></div>
+      <div class="field-wrap ${(!existing || existing.type !== 'select') ? 'hidden' : ''}" id="cfm-options-wrap" style="margin-bottom:14px;">
+        <label>Dropdown Options</label>
+        <input type="text" id="cfm-options" placeholder="Walk-in, Doctor Referral, Online" value="${existing && existing.options ? escapeHtml(existing.options.join(', ')) : ''}">
+        <span class="hint">Comma separated</span>
+      </div>
+      <div class="checkbox-row"><input type="checkbox" id="cfm-required" ${existing && existing.required ? 'checked' : ''}><label for="cfm-required" style="margin:0;">Required field</label></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-ghost" id="m-cancel">Cancel</button><button class="btn btn-primary" id="cfm-save">${icon('check')} Save</button></div>
+  `);
+  $('#m-x').onclick = closeModal; $('#m-cancel').onclick = closeModal;
+  $('#cfm-type').addEventListener('change', (e) => { $('#cfm-options-wrap').classList.toggle('hidden', e.target.value !== 'select'); });
+  $('#cfm-save').onclick = async () => {
+    const label = $('#cfm-label').value.trim();
+    const type = $('#cfm-type').value;
+    const required = $('#cfm-required').checked;
+    if (!label) { showToast('Field label is required', 'error'); return; }
+    let options = null;
+    if (type === 'select') {
+      options = $('#cfm-options').value.split(',').map(s => s.trim()).filter(Boolean);
+      if (!options.length) { showToast('Add at least one dropdown option', 'error'); return; }
+    }
+    const btn = $('#cfm-save'); setBtnLoading(btn, true);
+    try {
+      const newFields = state.customFields.slice();
+      if (isEdit) {
+        const idx = newFields.findIndex(f => f.key === existing.key);
+        if (idx !== -1) newFields[idx] = Object.assign({}, existing, { label, type, required, options });
+      } else {
+        const key = slugifyFieldKey(label, newFields);
+        newFields.push({ key, label, type, required, options });
+      }
+      await updateDoc(doc(db, 'companies', state.companyId), { customFields: newFields });
+      state.customFields = newFields;
+      showToast('Custom field saved', 'success');
+      closeModal();
+      navigateTo('settings');
+    } catch (err) { showToast(friendlyError(err), 'error'); setBtnLoading(btn, false, `${icon('check')} Save`); }
+  };
+}
+
+async function deleteCustomField(f) {
+  const ok = await confirmDialog('Delete this field?', `"${f.label}" will no longer appear on the prescription form for ${state.companyName}. Existing prescriptions that already have a value for it keep that data — it's just hidden.`, 'Delete', true);
+  if (!ok) return;
+  try {
+    const newFields = state.customFields.filter(x => x.key !== f.key);
+    await updateDoc(doc(db, 'companies', state.companyId), { customFields: newFields });
+    state.customFields = newFields;
+    showToast('Field deleted', 'success');
+    navigateTo('settings');
+  } catch (e) { showToast(friendlyError(e), 'error'); }
 }
 
 VIEW_RENDERERS['settings'] = renderSettingsView;

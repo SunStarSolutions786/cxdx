@@ -104,20 +104,27 @@ only used for Auth/Firestore, not for hosting, in this option.
 - **Super Admin** — creates and manages company accounts, adds/removes Admin users per company, can open any company's workspace directly.
 - **Admin** — everything inside their own company: prescription entry, master data, billing dump uploads, reports.
 
-**Prescriptions** — a dedicated full-page form (not a popup) with Date,
-UHID, Patient Name, Consultant, Entered By, and an optional Consultation
-Follow Up date, followed by the tests given, and Remarks at the very end.
-The **UHID field auto-strips spaces and forces capital letters** as you
-type, since matching depends on it being exact. One prescription visit can
-include several tests — add rows with the button, or just press **Enter**
-in a test row to add another instantly. Each test also has its own
-optional Test Follow Up date. A running "N tests · ₹total" summary updates
-live as you add rows. Every test row defaults to **"No Test Given"** with
-the amount locked at zero — pick a real test only if one was actually
-prescribed. A visit saved this way still counts toward Total Prescriptions
-on the dashboard and reports, but is left out of Test Given, Conversion,
-and Leakage entirely (it shows as a neutral **No Test** badge, filterable
-from the Prescriptions list) — since there was nothing to convert.
+**Prescriptions** — a dedicated full-page form (not a popup) with Visit
+Details (Date, UHID, Patient Name, Consultant, Entered By) first, then the
+tests given, then Follow Up, then Remarks last. The **UHID field
+auto-strips spaces and forces capital letters** as you type, since matching
+depends on it being exact. One prescription visit can include several
+tests — each row is just Test + Amount, added with the button or by
+pressing **Enter** in a test row for another instantly. A running "N tests
+· ₹total" summary updates live as you add rows. Every test row defaults to
+**"No Test Given"** with the amount locked at zero — pick a real test only
+if one was actually prescribed. A visit saved this way still counts toward
+Total Prescriptions on the dashboard and reports, but is left out of Test
+Given, Conversion, and Leakage entirely (it shows as a neutral **No Test**
+badge, filterable from the Prescriptions list) — since there was nothing to
+convert. **Consultation Follow Up** and **Test Follow Up** sit side by side
+in their own section near the end of the form — both are optional dates,
+and Test Follow Up applies to the whole visit rather than each test
+individually. The Prescriptions list also has a **From/To date filter**
+alongside the search
+and status pills, handy for finding an older entry to edit — all filters
+reset to blank each time you open the tab. The whole filter area can be
+collapsed with the **Hide Filters** toggle above it, for more table space.
 
 **Masters** — Doctors, Tests, and Agents are each manageable with add/edit/
 delete, and each has a **Download Template → fill in Excel → Import**
@@ -162,7 +169,7 @@ Prescriptions screen.
 
 ```
 users/{uid}                          name, email, role, companyId
-companies/{companyId}                name, active, matchingConfig
+companies/{companyId}                name, active, matchingConfig, customFields
   doctors/{id}                       name, specialization
   tests/{id}                         name, amount
   agents/{id}                        name
@@ -174,34 +181,32 @@ companies/{companyId}                name, active, matchingConfig
     rows/{id}                        uhid, date, amount, testName, patientName, used
 ```
 
-## Adding a new prescription field later
+## Adding an extra prescription field for one company
 
 The core prescription fields (Date, UHID, Test Given, etc.) are wired
-directly into the matching engine, so they stay as-is. For anything
-*beyond* those, there's a config array built for exactly this — add one
-entry and it shows up everywhere: the New/Edit form, the Prescriptions and
-Reports tables, the Excel template + bulk import, and the Excel export.
+directly into the matching engine and are the same for every company. For
+anything beyond those, each company can define its **own** extra fields —
+one company having a "Referral Source" field doesn't add it anywhere else.
 
-Find `CUSTOM_PRESCRIPTION_FIELDS` near the top of the script and add an
-entry, for example:
+From that company's **Settings** page (Super Admin: open the company first),
+**Custom Prescription Fields → Add Field**, set:
 
-```js
-const CUSTOM_PRESCRIPTION_FIELDS = [
-  { key: 'referralSource', label: 'Referral Source', type: 'select',
-    options: ['Walk-in', 'Doctor Referral', 'Online'], required: false },
-];
-```
+- **Label** — what shows on the form and as the Excel column header (an
+  internal key is generated from this automatically and stays fixed even if
+  you rename the label later, so existing data never gets orphaned)
+- **Type** — Text, Number, Date, Yes/No, or Dropdown (Dropdown asks for a
+  comma-separated list of options)
+- **Required** — whether the prescription form should block saving without it
 
-Supported `type`s: `'text'`, `'number'`, `'date'`, `'yesno'`, and `'select'`
-(needs an `options` array). Each field needs a unique `key` (used
-internally) and a `label` (shown to users and used as the Excel column
-header). Existing prescriptions just won't have a value for a field added
-after they were created — nothing breaks, the cell shows a dash until it's
-filled in.
+It shows up immediately on that company's New/Edit Prescription form, in
+the Prescriptions and Reports tables, and in the Excel template, bulk
+import, and export — for that company only. Deleting a field just hides
+it going forward; prescriptions that already had a value for it keep that
+data.
 
 If you outgrow this (e.g. you want a field to pull its own master list, the
 way Consultant pulls from Doctors), that's a bigger change to the form
-logic rather than a config addition — happy to help with that when you get
+logic rather than a Settings addition — happy to help with that when you get
 there.
 
 ## Customizing
