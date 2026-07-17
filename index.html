@@ -295,6 +295,16 @@ input[type=text],input[type=email],input[type=password],input[type=number],input
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--teal-500);}
 input.invalid,select.invalid{border-color:var(--red-600);}
 select{appearance:none;background-image:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235B7278' stroke-width='2.5'><path d='M6 9l6 6 6-6'/></svg>");background-repeat:no-repeat;background-position:right 10px center;padding-right:32px;}
+
+.search-select{position:relative;}
+.search-select .ss-input{cursor:text;}
+.search-select .ss-dropdown{
+  position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--paper-0);border:1.5px solid var(--line-200);
+  border-radius:var(--radius-sm);box-shadow:var(--shadow-md);max-height:230px;overflow-y:auto;z-index:60;
+}
+.search-select .ss-option{padding:9px 12px;font-size:13.5px;cursor:pointer;color:var(--ink-900);}
+.search-select .ss-option:hover,.search-select .ss-option.active{background:var(--teal-50);}
+.search-select .ss-empty{padding:9px 12px;font-size:13px;color:var(--slate-400);}
 textarea{resize:vertical;min-height:64px;}
 input.uhid-input{text-transform:uppercase;font-family:var(--font-mono);letter-spacing:0.5px;}
 .checkbox-row{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--slate-600);}
@@ -695,11 +705,7 @@ function parseFlexibleDate(value) {
   s = s.replace(/[T\s]\d{1,2}:\d{2}(:\d{2})?(\.\d+)?\s*(AM|PM|am|pm)?.*$/, '').trim();
   let m;
   if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return isoFromParts(+m[1], +m[2], +m[3]);
-  if ((m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/))) {
-    const a = +m[1], b = +m[2];
-    if (a > 12) return isoFromParts(+m[3], b, a); // DD-MM-YYYY
-    return isoFromParts(+m[3], a, b); // ambiguous -> assume DD-MM-YYYY (common outside US); adjust in Settings if needed
-  }
+  if ((m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/))) return isoFromParts(+m[3], +m[2], +m[1]); // DD-MM-YYYY: day=m[1], month=m[2] (the common convention outside the US)
   if ((m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})$/))) return isoFromParts(2000 + (+m[3]), +m[2] > 12 ? +m[1] : +m[2], +m[2] > 12 ? +m[2] : +m[1]);
   const d = new Date(s);
   if (!isNaN(d)) return isoFromParts(d.getFullYear(), d.getMonth()+1, d.getDate());
@@ -707,6 +713,7 @@ function parseFlexibleDate(value) {
 }
 function isoFromParts(y, m, d) { if(!y||!m||!d) return null; return y + '-' + String(m).padStart(2,'0') + '-' + String(d).padStart(2,'0'); }
 function isValidISODate(v) { return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v); }
+function isoToExcelDate(iso) { if (!isValidISODate(iso)) return iso || ''; const [y, m, d] = iso.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); }
 
 function animateCountUp(el, target, opts) {
   const isMoney = opts && opts.money, isPct = opts && opts.pct;
@@ -1408,30 +1415,63 @@ function rxRowHtml(r) {
   </tr>`;
 }
 
-function testOptionsHtml(selectedName) {
-  const sel = selectedName || NO_TEST_LABEL;
-  let opts = `<option value="${NO_TEST_LABEL}"${sel === NO_TEST_LABEL ? ' selected' : ''}>${NO_TEST_LABEL}</option>`;
-  opts += state.tests.map(t => `<option value="${escapeHtml(t.name)}" data-amount="${t.amount}" ${t.name === sel ? 'selected' : ''}>${escapeHtml(t.name)}</option>`).join('');
-  if (sel !== NO_TEST_LABEL && !state.tests.some(t => t.name === sel)) opts += `<option value="${escapeHtml(sel)}" selected>${escapeHtml(sel)} (custom)</option>`;
-  return opts;
-}
-function bindTestAmountToggle(selectEl, amountEl) {
-  selectEl.addEventListener('change', () => {
-    const opt = selectEl.selectedOptions[0];
-    const isNoTest = selectEl.value === NO_TEST_LABEL;
-    amountEl.disabled = isNoTest;
-    amountEl.value = isNoTest ? 0 : (opt && opt.dataset.amount !== undefined ? opt.dataset.amount : 0);
+function initSearchSelect(id, options, initialValue, onSelect) {
+  const root = document.getElementById(id);
+  if (!root) return null;
+  let opts = options.slice();
+  if (initialValue && !opts.some(o => o.value === initialValue)) opts = [{ value: initialValue, label: initialValue + ' (custom)' }].concat(opts);
+  let value = initialValue || '';
+  const selectedOpt = opts.find(o => o.value === value);
+  root.innerHTML = `<input type="text" class="ss-input" autocomplete="off" placeholder="Type to search…" value="${escapeHtml(selectedOpt ? selectedOpt.label : '')}"><div class="ss-dropdown hidden"></div>`;
+  const input = root.querySelector('.ss-input'), dropdown = root.querySelector('.ss-dropdown');
+  let activeIndex = -1, visible = [];
+
+  function renderList(term) {
+    const t = (term || '').trim().toLowerCase();
+    visible = t ? opts.filter(o => o.label.toLowerCase().includes(t)) : opts;
+    activeIndex = -1;
+    dropdown.innerHTML = visible.length ? visible.slice(0, 60).map((o, i) => `<div class="ss-option" data-i="${i}">${escapeHtml(o.label)}</div>`).join('') : `<div class="ss-empty">No matches</div>`;
+    dropdown.classList.remove('hidden');
+    dropdown.querySelectorAll('.ss-option').forEach(el => el.addEventListener('mousedown', (e) => { e.preventDefault(); choose(visible[+el.dataset.i]); }));
+  }
+  function choose(opt) {
+    value = opt ? opt.value : '';
+    input.value = opt ? opt.label : '';
+    dropdown.classList.add('hidden');
+    if (onSelect) onSelect(value, opt);
+  }
+  function highlight(i) {
+    activeIndex = i;
+    dropdown.querySelectorAll('.ss-option').forEach((el, idx) => el.classList.toggle('active', idx === i));
+    const el = dropdown.querySelector(`.ss-option[data-i="${i}"]`);
+    if (el) el.scrollIntoView({ block: 'nearest' });
+  }
+  input.addEventListener('focus', () => renderList(''));
+  input.addEventListener('input', () => renderList(input.value));
+  input.addEventListener('keydown', (e) => {
+    if (dropdown.classList.contains('hidden') && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { renderList(input.value); return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); highlight(Math.min(activeIndex + 1, visible.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); highlight(Math.max(activeIndex - 1, 0)); }
+    else if (e.key === 'Enter') { if (activeIndex >= 0 && visible[activeIndex]) { e.preventDefault(); e.stopPropagation(); choose(visible[activeIndex]); } }
+    else if (e.key === 'Escape') { dropdown.classList.add('hidden'); }
   });
-}
-function doctorOptionsHtml(selected) {
-  let opts = state.doctors.map(d => `<option value="${escapeHtml(d.name)}" ${d.name === selected ? 'selected' : ''}>${escapeHtml(d.name)}${d.specialization ? ' — ' + escapeHtml(d.specialization) : ''}</option>`).join('');
-  if (selected && !state.doctors.some(d => d.name === selected)) opts = `<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)}</option>` + opts;
-  return opts;
-}
-function agentOptionsHtml(selected) {
-  let opts = state.agents.map(a => `<option value="${escapeHtml(a.name)}" ${a.name === selected ? 'selected' : ''}>${escapeHtml(a.name)}</option>`).join('');
-  if (selected && !state.agents.some(a => a.name === selected)) opts = `<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)}</option>` + opts;
-  return opts;
+  input.addEventListener('blur', () => {
+    setTimeout(() => {
+      dropdown.classList.add('hidden');
+      const opt = opts.find(o => o.value === value);
+      input.value = opt ? opt.label : '';
+    }, 150);
+  });
+  return {
+    getValue: () => value,
+    setOptions: (newOptions, newValue) => {
+      opts = newOptions.slice();
+      if (newValue !== undefined) value = newValue;
+      if (value && !opts.some(o => o.value === value)) opts = [{ value, label: value + ' (custom)' }].concat(opts);
+      const o = opts.find(x => x.value === value);
+      input.value = o ? o.label : '';
+    },
+  };
 }
 function bindUhidNormalize(inputEl) {
   inputEl.addEventListener('input', () => {
@@ -1477,6 +1517,10 @@ function slugifyFieldKey(label, existingFields) {
   return key;
 }
 
+function doctorSearchOptions() { return state.doctors.map(d => ({ value: d.name, label: d.name + (d.specialization ? ' — ' + d.specialization : '') })); }
+function agentSearchOptions() { return state.agents.map(a => ({ value: a.name, label: a.name })); }
+function testSearchOptions() { return [{ value: NO_TEST_LABEL, label: NO_TEST_LABEL }].concat(state.tests.map(t => ({ value: t.name, label: t.name, amount: t.amount }))); }
+
 async function renderPrescriptionFormView(content, params) {
   const existing = params && params.editing;
   const isEdit = !!existing;
@@ -1492,8 +1536,8 @@ async function renderPrescriptionFormView(content, params) {
           <div class="field-wrap"><label>Date <span class="req">*</span></label><input type="date" id="rx-date" value="${existing ? existing.date : todayISO()}"></div>
           <div class="field-wrap"><label>UHID <span class="req">*</span></label><input type="text" id="rx-uhid" class="uhid-input" placeholder="e.g. UH20458" value="${existing ? escapeHtml(existing.uhid) : ''}"><span class="hint">No spaces, auto-capitalized</span></div>
           <div class="field-wrap span-2"><label>Patient Name <span class="req">*</span></label><input type="text" id="rx-patient" value="${existing ? escapeHtml(existing.patientName) : ''}"></div>
-          <div class="field-wrap"><label>Consultant</label><select id="rx-consultant"><option value="">— Select —</option>${doctorOptionsHtml(existing && existing.consultant)}</select></div>
-          <div class="field-wrap"><label>Entered By</label><select id="rx-entered-by"><option value="">— Select —</option>${agentOptionsHtml(existing && existing.enteredBy)}</select></div>
+          <div class="field-wrap"><label>Consultant</label><div class="search-select" id="rx-consultant"></div></div>
+          <div class="field-wrap"><label>Entered By</label><div class="search-select" id="rx-entered-by"></div></div>
         </div>
       </div>
 
@@ -1505,13 +1549,13 @@ async function renderPrescriptionFormView(content, params) {
         <div style="margin-top:14px;">
           ${isEdit ? `
           <div class="form-grid cols-3">
-            <div class="field-wrap span-2"><label>Test Given <span class="req">*</span></label><select id="rx-test-single">${testOptionsHtml(existing.testGiven)}</select></div>
+            <div class="field-wrap span-2"><label>Test Given <span class="req">*</span></label><div class="search-select" id="rx-test-single"></div></div>
             <div class="field-wrap"><label>Amount <span class="req">*</span></label><input type="number" id="rx-amount-single" value="${existing.testAmount}" ${existing.testGiven === NO_TEST_LABEL ? 'disabled' : ''}></div>
           </div>
           ` : `
           <div id="test-rows-container"></div>
           <button type="button" class="btn btn-secondary btn-sm" id="add-test-row-btn">${icon('plus')} Add Another Test</button>
-          <p class="hint" style="margin-top:10px;">Tip: press Enter in any field of a test row to quickly add another.</p>
+          <p class="hint" style="margin-top:10px;">Tip: type to search, then press Enter in a test row to quickly add another.</p>
           `}
         </div>
       </div>
@@ -1535,30 +1579,38 @@ async function renderPrescriptionFormView(content, params) {
 
   $('#rxp-cancel').addEventListener('click', () => navigateTo('prescriptions'));
   bindUhidNormalize($('#rx-uhid'));
+  const consultantSelect = initSearchSelect('rx-consultant', doctorSearchOptions(), existing ? existing.consultant : '');
+  const enteredBySelect = initSearchSelect('rx-entered-by', agentSearchOptions(), existing ? existing.enteredBy : '');
+  let testSingleSelect = null;
 
   if (!isEdit) {
     addTestRow();
     updateTestsSummary();
-    $('#add-test-row-btn').addEventListener('click', () => { const row = addTestRow(); updateTestsSummary(); if (row) row.querySelector('.tr-test').focus(); });
+    $('#add-test-row-btn').addEventListener('click', () => { const row = addTestRow(); updateTestsSummary(); if (row) row.querySelector('.ss-input').focus(); });
     $('#test-rows-container').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
         const row = addTestRow();
         updateTestsSummary();
-        if (row) row.querySelector('.tr-test').focus();
+        if (row) row.querySelector('.ss-input').focus();
       }
     });
     $('#test-rows-container').addEventListener('input', updateTestsSummary);
     $('#rx-uhid').focus();
   } else {
-    bindTestAmountToggle($('#rx-test-single'), $('#rx-amount-single'));
+    const amountSingle = $('#rx-amount-single');
+    testSingleSelect = initSearchSelect('rx-test-single', testSearchOptions(), existing.testGiven, (val, opt) => {
+      const isNoTest = val === NO_TEST_LABEL;
+      amountSingle.disabled = isNoTest;
+      amountSingle.value = isNoTest ? 0 : (opt && opt.amount !== undefined ? opt.amount : amountSingle.value);
+    });
   }
 
   $('#rxp-save').addEventListener('click', async () => {
     const date = $('#rx-date').value;
     const uhidVal = normalizeUHID($('#rx-uhid').value);
     const patientName = $('#rx-patient').value.trim();
-    const consultant = $('#rx-consultant').value, enteredBy = $('#rx-entered-by').value;
+    const consultant = consultantSelect.getValue(), enteredBy = enteredBySelect.getValue();
     const cfu = $('#rx-cfu').value, tfu = $('#rx-tfu').value, remarks = $('#rx-remarks').value.trim();
     if (!date || !uhidVal || !patientName) { showToast('Date, UHID, and Patient Name are required', 'error'); return; }
     const custom = collectCustomFieldValues();
@@ -1566,26 +1618,29 @@ async function renderPrescriptionFormView(content, params) {
     if (customErr) { showToast(customErr, 'error'); return; }
     const btn = $('#rxp-save'); setBtnLoading(btn, true);
     try {
+      let savedRefs = [];
       if (isEdit) {
-        const testGiven = $('#rx-test-single').value, testAmount = toNum($('#rx-amount-single').value);
-        await updateDoc(doc(db, 'companies', state.companyId, 'prescriptions', existing.id), { date, uhid: uhidVal, patientName, consultant, enteredBy, consultationFollowUp: cfu, testFollowUp: tfu, remarks, testGiven, testAmount, monthKey: monthKeyFromDate(date), custom });
+        const testGiven = testSingleSelect.getValue(), testAmount = toNum($('#rx-amount-single').value);
+        const ref = doc(db, 'companies', state.companyId, 'prescriptions', existing.id);
+        await updateDoc(ref, { date, uhid: uhidVal, patientName, consultant, enteredBy, consultationFollowUp: cfu, testFollowUp: tfu, remarks, testGiven, testAmount, monthKey: monthKeyFromDate(date), custom });
+        savedRefs = [ref];
         showToast('Prescription updated', 'success');
       } else {
         const rowEls = $$('#test-rows-container .test-row');
         const docs = [];
         for (const rowEl of rowEls) {
-          const testGiven = rowEl.querySelector('.tr-test').value;
+          const testGiven = rowEl._testSelect ? rowEl._testSelect.getValue() : NO_TEST_LABEL;
           const testAmount = toNum(rowEl.querySelector('.tr-amount').value);
           if (!testGiven) continue;
           docs.push({ date, uhid: uhidVal, patientName, consultant, enteredBy, consultationFollowUp: cfu, testFollowUp: tfu, remarks, testGiven, testAmount, monthKey: monthKeyFromDate(date), custom, matchStatus: 'leakage', matchedAmount: 0, matchedBillingRef: null, createdAt: serverTimestamp() });
         }
         if (!docs.length) { showToast('Select at least one test', 'error'); setBtnLoading(btn, false, `${icon('check')} Save Prescription`); return; }
         const batch = writeBatch(db);
-        docs.forEach(d => batch.set(doc(collection(db, 'companies', state.companyId, 'prescriptions')), d));
+        savedRefs = docs.map(d => { const ref = doc(collection(db, 'companies', state.companyId, 'prescriptions')); batch.set(ref, d); return ref; });
         await batch.commit();
         showToast(`${docs.length} prescription row(s) saved`, 'success');
       }
-      await runMatching();
+      await quickMatchBatch(savedRefs);
       navigateTo('prescriptions');
     } catch (err) {
       showToast(friendlyError(err), 'error');
@@ -1597,26 +1652,32 @@ function updateTestsSummary() {
   const pill = $('#tests-summary');
   if (!pill) return;
   const rows = $$('#test-rows-container .test-row');
-  const realRows = rows.filter(r => r.querySelector('.tr-test').value !== NO_TEST_LABEL);
+  const realRows = rows.filter(r => r._testSelect && r._testSelect.getValue() !== NO_TEST_LABEL);
   const total = rows.reduce((s, r) => s + toNum(r.querySelector('.tr-amount').value), 0);
   pill.textContent = `${realRows.length} test${realRows.length === 1 ? '' : 's'} · ${formatMoney(total)}`;
 }
 function renumberTestRows() {
   $$('#test-rows-container .test-row').forEach((row, i) => { const badge = row.querySelector('.row-num'); if (badge) badge.textContent = i + 1; });
 }
+let testRowIdCounter = 0;
 function addTestRow() {
   const container = $('#test-rows-container');
   const div = document.createElement('div');
   div.className = 'test-row';
+  const rowId = 'tr-test-' + (testRowIdCounter++);
   div.innerHTML = `
     <span class="row-num">${container.children.length + 1}</span>
-    <div class="field-wrap"><label>Test Given</label><select class="tr-test">${testOptionsHtml()}</select></div>
+    <div class="field-wrap"><label>Test Given</label><div class="search-select" id="${rowId}"></div></div>
     <div class="field-wrap"><label>Amount</label><input type="number" class="tr-amount" value="0" disabled></div>
     <button type="button" class="icon-btn danger tr-remove">${icon('x')}</button>`;
   container.appendChild(div);
-  const select = div.querySelector('.tr-test'), amountInput = div.querySelector('.tr-amount');
-  bindTestAmountToggle(select, amountInput);
-  select.addEventListener('change', updateTestsSummary);
+  const amountInput = div.querySelector('.tr-amount');
+  div._testSelect = initSearchSelect(rowId, testSearchOptions(), NO_TEST_LABEL, (val, opt) => {
+    const isNoTest = val === NO_TEST_LABEL;
+    amountInput.disabled = isNoTest;
+    amountInput.value = isNoTest ? 0 : (opt && opt.amount !== undefined ? opt.amount : 0);
+    updateTestsSummary();
+  });
   div.querySelector('.tr-remove').addEventListener('click', () => {
     if ($$('#test-rows-container .test-row').length > 1) { div.remove(); renumberTestRows(); updateTestsSummary(); }
     else showToast('At least one test is required', 'error');
@@ -1641,60 +1702,111 @@ function downloadPrescriptionTemplate() {
   XLSX.writeFile(wb, 'CXDX_Prescription_Template.xlsx');
 }
 
+const PRESCRIPTION_IMPORT_FIELDS = [
+  { key: 'date', label: 'Date', required: true },
+  { key: 'uhid', label: 'UHID', required: true },
+  { key: 'patientName', label: 'Patient Name', required: true },
+  { key: 'consultant', label: 'Consultant', required: false },
+  { key: 'testGiven', label: 'Test Given', required: false },
+  { key: 'testAmount', label: 'Test Amount', required: false },
+  { key: 'consultationFollowUp', label: 'Consultation Follow Up', required: false },
+  { key: 'testFollowUp', label: 'Test Follow Up', required: false },
+  { key: 'remarks', label: 'Remarks', required: false },
+  { key: 'enteredBy', label: 'Entered By', required: false },
+];
+function detectPrescriptionColumnMapping(headers) {
+  const lower = headers.map(h => (h || '').toString().toLowerCase());
+  function find(patterns) { for (const p of patterns) { const idx = lower.findIndex(h => h.includes(p)); if (idx !== -1) return headers[idx]; } return ''; }
+  return {
+    date: find(['date']), uhid: find(['uhid', 'mr no', 'mr number', 'mrn', 'patient id', 'reg no']),
+    patientName: find(['patient name', 'patient']), consultant: find(['consultant', 'doctor', 'physician']),
+    testGiven: find(['test given', 'test name', 'test', 'item']), testAmount: find(['test amount', 'amount', 'value']),
+    consultationFollowUp: find(['consultation follow', 'consultation']), testFollowUp: find(['test follow']),
+    remarks: find(['remarks', 'notes', 'comment']), enteredBy: find(['entered by', 'agent']),
+  };
+}
 function openBulkImportPrescriptionsModal() {
   openModal(`
     <div class="modal-head"><h3>Import Prescriptions</h3><button class="icon-btn" id="m-x">${icon('x')}</button></div>
     <div class="modal-body">
-      <p style="font-size:13px;color:var(--slate-500);margin-bottom:14px;line-height:1.55;">Use the template below so columns line up correctly. UHID is auto-formatted (capitalized, no spaces). Matching runs automatically right after import.</p>
+      <p style="font-size:13px;color:var(--slate-500);margin-bottom:14px;line-height:1.55;">Works with the downloadable template, or your own spreadsheet — map your columns below either way. UHID is auto-formatted (capitalized, no spaces). Matching runs automatically right after import.</p>
       <button class="btn btn-secondary btn-sm" id="bi-template" style="margin-bottom:16px;">${icon('download')} Download Template</button>
       <div class="file-drop" id="bi-drop">
         <input type="file" id="bi-file" accept=".xlsx,.xls,.csv" style="display:none;">
         ${icon('uploadCloud')}<div style="font-size:13.5px;font-weight:600;">Click to choose a file</div><div style="font-size:12px;color:var(--slate-400);">.xlsx, .xls, or .csv</div><div class="fname" id="bi-fname"></div>
       </div>
+      <div id="bi-mapping-zone"></div>
       <div id="bi-preview" style="margin-top:16px;"></div>
     </div>
     <div class="modal-foot"><button class="btn btn-ghost" id="m-cancel">Cancel</button><button class="btn btn-primary" id="bi-import" disabled>${icon('check')} Import Rows</button></div>
   `, { wide: true });
   $('#m-x').onclick = closeModal; $('#m-cancel').onclick = closeModal;
   $('#bi-template').onclick = downloadPrescriptionTemplate;
-  let parsedRows = [];
+  let fileRows = [], parsedRows = [], skippedCount = 0;
   $('#bi-drop').onclick = () => $('#bi-file').click();
+
   $('#bi-file').addEventListener('change', async (e) => {
     const file = e.target.files[0]; if (!file) return;
     $('#bi-fname').textContent = file.name;
     try {
       const data = await readFileAsRows(file);
-      parsedRows = data.rows.map(r => {
-        const testGiven = (r['Test Given'] || '').toString().trim() || NO_TEST_LABEL;
-        return {
-          date: parseFlexibleDate(r['Date (YYYY-MM-DD)'] || r['Date']),
-          uhid: normalizeUHID(r['UHID']),
-          patientName: (r['Patient Name'] || '').toString().trim(),
-          consultant: (r['Consultant'] || '').toString().trim(),
-          testGiven,
-          testAmount: testGiven === NO_TEST_LABEL ? 0 : toNum(r['Test Amount']),
-          consultationFollowUp: parseFlexibleDate(r['Consultation Follow Up Date (YYYY-MM-DD, optional)']) || '',
-          testFollowUp: parseFlexibleDate(r['Test Follow Up Date (YYYY-MM-DD, optional)']) || '',
-          remarks: (r['Remarks'] || '').toString().trim(),
-          enteredBy: (r['Entered By'] || '').toString().trim(),
-          custom: customFieldsFromImportRow(r),
-        };
-      }).filter(r => r.uhid && r.date);
-      $('#bi-preview').innerHTML = parsedRows.length
-        ? `<div class="badge matched" style="margin-bottom:8px;">${icon('check')} ${parsedRows.length} valid rows detected</div><div class="table-wrap" style="max-height:220px;overflow-y:auto;"><table><thead><tr><th>Date</th><th>UHID</th><th>Patient</th><th>Test</th><th class="num">Amount</th></tr></thead><tbody>${parsedRows.slice(0, 8).map(r => `<tr><td>${formatDateDisplay(r.date)}</td><td class="uhid-cell">${escapeHtml(r.uhid)}</td><td>${escapeHtml(r.patientName)}</td><td>${escapeHtml(r.testGiven)}</td><td class="num">${formatMoney(r.testAmount)}</td></tr>`).join('')}</tbody></table></div>${parsedRows.length > 8 ? `<p class="u-muted" style="font-size:12px;margin-top:6px;">+ ${parsedRows.length - 8} more rows</p>` : ''}`
-        : `<div class="badge leakage">${icon('alertTriangle')} No valid rows found — check the Date and UHID columns are filled in</div>`;
-      $('#bi-import').disabled = !parsedRows.length;
+      fileRows = data.rows;
+      renderMappingZone(data.headers, detectPrescriptionColumnMapping(data.headers));
     } catch (err) { showToast('Could not read that file: ' + friendlyError(err), 'error'); }
   });
+
+  function renderMappingZone(headers, guess) {
+    const optionsHtml = (val) => `<option value="">— Not in file —</option>` + headers.map(h => `<option value="${escapeHtml(h)}" ${h === val ? 'selected' : ''}>${escapeHtml(h)}</option>`).join('');
+    $('#bi-mapping-zone').innerHTML = `<div class="divider"></div><span class="section-label">Map Columns</span>` +
+      PRESCRIPTION_IMPORT_FIELDS.map(f => `<div class="map-row"><div class="field-name">${f.required ? '<span class="req-dot"></span>' : ''}${f.label}${f.required ? '' : ' <span class="hint">(optional)</span>'}</div><span class="arrow">${icon('chevronRight')}</span><select id="bim-${f.key}">${optionsHtml(guess[f.key])}</select></div>`).join('');
+    PRESCRIPTION_IMPORT_FIELDS.forEach(f => $('#bim-' + f.key).addEventListener('change', updatePreview));
+    updatePreview();
+  }
+  function currentMap() { const m = {}; PRESCRIPTION_IMPORT_FIELDS.forEach(f => m[f.key] = $('#bim-' + f.key).value); return m; }
+
+  function updatePreview() {
+    const map = currentMap();
+    const ready = map.date && map.uhid && map.patientName;
+    $('#bi-import').disabled = !ready;
+    if (!ready) { $('#bi-preview').innerHTML = `<p class="u-muted" style="font-size:12.5px;margin-top:10px;">Map Date, UHID, and Patient Name to continue.</p>`; return; }
+    const built = fileRows.map(r => buildPrescriptionImportRow(r, map));
+    parsedRows = built.filter(r => r.uhid && r.date);
+    skippedCount = built.length - parsedRows.length;
+    $('#bi-preview').innerHTML = `
+      <div class="u-flex u-gap-8" style="flex-wrap:wrap;margin-bottom:8px;">
+        <span class="badge matched">${icon('check')} ${parsedRows.length} rows ready to import</span>
+        ${skippedCount ? `<span class="badge leakage">${icon('alertTriangle')} ${skippedCount} skipped — missing UHID or an unreadable date</span>` : ''}
+      </div>
+      <div class="table-wrap" style="max-height:220px;overflow-y:auto;"><table><thead><tr><th>Date</th><th>UHID</th><th>Patient</th><th>Test</th><th class="num">Amount</th></tr></thead><tbody>${parsedRows.slice(0, 8).map(r => `<tr><td>${formatDateDisplay(r.date)}</td><td class="uhid-cell">${escapeHtml(r.uhid)}</td><td>${escapeHtml(r.patientName)}</td><td>${escapeHtml(r.testGiven)}</td><td class="num">${formatMoney(r.testAmount)}</td></tr>`).join('')}</tbody></table></div>
+      ${parsedRows.length > 8 ? `<p class="u-muted" style="font-size:12px;margin-top:6px;">+ ${parsedRows.length - 8} more rows</p>` : ''}`;
+  }
+
   $('#bi-import').onclick = async () => {
     const btn = $('#bi-import'); setBtnLoading(btn, true);
     try {
       await bulkImportPrescriptions(parsedRows);
-      showToast(`${parsedRows.length} prescriptions imported`, 'success');
+      showToast(`${parsedRows.length} prescriptions imported${skippedCount ? `, ${skippedCount} skipped` : ''}`, 'success');
       closeModal();
-      await runMatching();
+      showToast('Click "Run Matching" on the Dashboard once you\'ve finished uploading all your data', 'info');
       navigateTo('prescriptions');
     } catch (err) { showToast(friendlyError(err), 'error'); setBtnLoading(btn, false, `${icon('check')} Import Rows`); }
+  };
+}
+function buildPrescriptionImportRow(r, map) {
+  const get = (key) => (map[key] ? (r[map[key]] || '') : '').toString().trim();
+  const testGiven = get('testGiven') || NO_TEST_LABEL;
+  return {
+    date: map.date ? parseFlexibleDate(r[map.date]) : null,
+    uhid: normalizeUHID(map.uhid ? r[map.uhid] : ''),
+    patientName: get('patientName'),
+    consultant: get('consultant'),
+    testGiven,
+    testAmount: testGiven === NO_TEST_LABEL ? 0 : toNum(map.testAmount ? r[map.testAmount] : 0),
+    consultationFollowUp: (map.consultationFollowUp ? parseFlexibleDate(r[map.consultationFollowUp]) : null) || '',
+    testFollowUp: (map.testFollowUp ? parseFlexibleDate(r[map.testFollowUp]) : null) || '',
+    remarks: get('remarks'),
+    enteredBy: get('enteredBy'),
+    custom: customFieldsFromImportRow(r),
   };
 }
 async function bulkImportPrescriptions(rows) {
@@ -1882,8 +1994,15 @@ function detectColumnMapping(headers, savedMap) {
 }
 
 async function renderBillingView(content) {
-  $('#topbar-actions').innerHTML = `<button class="btn btn-primary" id="bv-upload">${icon('uploadCloud')} Upload Billing Dump</button>`;
+  $('#topbar-actions').innerHTML = `<button class="btn btn-secondary" id="bv-run-match">${icon('refresh')} Run Matching</button><button class="btn btn-primary" id="bv-upload">${icon('uploadCloud')} Upload Billing Dump</button>`;
   $('#bv-upload').addEventListener('click', () => openBillingUploadModal());
+  $('#bv-run-match').addEventListener('click', async () => {
+    const btn = $('#bv-run-match'); setBtnLoading(btn, true);
+    showToast('Running matching — this can take a moment for large datasets…', 'info');
+    try { const r = await runMatching(); showToast(`Matching complete — ${r.matchedCount} matched, ${r.leakageCount} leakage`, 'success'); }
+    catch (err) { showToast(friendlyError(err), 'error'); }
+    setBtnLoading(btn, false, `${icon('refresh')} Run Matching`);
+  });
   content.innerHTML = `<div class="view"><div id="bv-list"><div class="u-center" style="padding:60px 0;"><div class="loader-ring"></div></div></div></div>`;
   const snap = await getDocs(query(collection(db, 'companies', state.companyId, 'billingDumps'), orderBy('monthKey', 'desc')));
   const dumps = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -1955,7 +2074,7 @@ function openBillingUploadModal(replaceMonthKey) {
       <div class="map-row"><div class="field-name"><span class="req-dot"></span>UHID</div><span class="arrow">${icon('chevronRight')}</span><select id="map-uhid">${optionsHtml(guess.uhid)}</select></div>
       <div class="map-row"><div class="field-name"><span class="req-dot"></span>Date</div><span class="arrow">${icon('chevronRight')}</span><select id="map-date">${optionsHtml(guess.date)}</select></div>
       <div class="map-row"><div class="field-name"><span class="req-dot"></span>Amount</div><span class="arrow">${icon('chevronRight')}</span><select id="map-amount">${optionsHtml(guess.amount)}</select></div>
-      <div class="map-row"><div class="field-name">Test Name <span class="hint">(optional)</span></div><span class="arrow">${icon('chevronRight')}</span><select id="map-testName">${optionsHtml(guess.testName)}</select></div>
+      <div class="map-row"><div class="field-name"><span class="req-dot"></span>Test Name</div><span class="arrow">${icon('chevronRight')}</span><select id="map-testName">${optionsHtml(guess.testName)}</select></div>
       <div class="map-row"><div class="field-name">Patient Name <span class="hint">(optional)</span></div><span class="arrow">${icon('chevronRight')}</span><select id="map-patientName">${optionsHtml(guess.patientName)}</select></div>
     `;
     ['uhid', 'date', 'amount', 'testName', 'patientName'].forEach(k => $('#map-' + k).addEventListener('change', updatePreview));
@@ -1964,9 +2083,9 @@ function openBillingUploadModal(replaceMonthKey) {
   function currentMap() { return { uhid: $('#map-uhid').value, date: $('#map-date').value, amount: $('#map-amount').value, testName: $('#map-testName').value, patientName: $('#map-patientName').value }; }
   function updatePreview() {
     const map = currentMap();
-    const ok = map.uhid && map.date && map.amount;
+    const ok = map.uhid && map.date && map.amount && map.testName;
     $('#bu-confirm').disabled = !ok;
-    if (!ok) { $('#bu-preview-zone').innerHTML = `<p class="u-muted" style="font-size:12.5px;margin-top:10px;">Map UHID, Date, and Amount to continue.</p>`; return; }
+    if (!ok) { $('#bu-preview-zone').innerHTML = `<p class="u-muted" style="font-size:12.5px;margin-top:10px;">Map UHID, Date, Amount, and Test Name to continue — matching relies on all four.</p>`; return; }
     const previewRows = fileRows.slice(0, 5).map(r => ({ uhid: normalizeUHID(r[map.uhid]), date: parseFlexibleDate(r[map.date]), amount: toNum(r[map.amount]), testName: map.testName ? r[map.testName] : '' }));
     $('#bu-preview-zone').innerHTML = `<div class="divider"></div><span class="section-label">Preview (first 5 of ${fileRows.length} rows)</span><div class="table-wrap"><table><thead><tr><th>UHID</th><th>Date</th><th class="num">Amount</th><th>Test Name</th></tr></thead><tbody>${previewRows.map(r => `<tr><td class="uhid-cell">${escapeHtml(r.uhid) || '—'}</td><td>${r.date ? formatDateDisplay(r.date) : '<span style="color:var(--red-600);">unparsed</span>'}</td><td class="num">${formatMoney(r.amount)}</td><td>${escapeHtml(r.testName || '—')}</td></tr>`).join('')}</tbody></table></div>`;
   }
@@ -1975,7 +2094,7 @@ function openBillingUploadModal(replaceMonthKey) {
     const monthKey = $('#bu-month').value;
     if (!monthKey) { showToast('Select a month', 'error'); return; }
     const map = currentMap();
-    if (!map.uhid || !map.date || !map.amount) { showToast('Map UHID, Date, and Amount', 'error'); return; }
+    if (!map.uhid || !map.date || !map.amount || !map.testName) { showToast('Map UHID, Date, Amount, and Test Name', 'error'); return; }
     if (!replaceMonthKey) {
       const existingDumpSnap = await getDoc(doc(db, 'companies', state.companyId, 'billingDumps', monthKey));
       if (existingDumpSnap.exists()) {
@@ -1986,10 +2105,8 @@ function openBillingUploadModal(replaceMonthKey) {
     const btn = $('#bu-confirm'); setBtnLoading(btn, true);
     try {
       await uploadBillingDump(monthKey, fileRows, map);
-      showToast('Billing dump uploaded — running matching…', 'info');
       closeModal();
-      const r = await runMatching();
-      showToast(`Matching complete — ${r.matchedCount} matched, ${r.leakageCount} leakage`, 'success');
+      showToast('Billing dump uploaded. Upload any other months first, then run matching once from the Dashboard — this keeps Firebase usage down.', 'success');
       navigateTo('billing');
     } catch (err) { showToast(friendlyError(err), 'error'); setBtnLoading(btn, false, `${icon('uploadCloud')} Confirm & Upload`); }
   };
@@ -2026,6 +2143,33 @@ async function deleteBillingDump(monthKey) {
   } catch (e) { showToast(friendlyError(e), 'error'); }
 }
 
+function decideMatch(p, candidateRows, usedIds, windowDays) {
+  if (p.testGiven === NO_TEST_LABEL) return { matchStatus: 'no-test', matchedAmount: 0, matchedBillingRef: null, consumedRef: null };
+  const isUnlimited = windowDays === -1;
+  const windowEnd = isUnlimited ? null : addDaysISO(p.date, windowDays);
+  const candidates = candidateRows.filter(b => !usedIds.has(b.id) && b.date >= p.date && (isUnlimited || b.date <= windowEnd));
+  const withTestName = candidates.filter(c => c.testName && c.testName.trim());
+  let chosen = null;
+  if (withTestName.length && p.testGiven) {
+    // This UHID+date window has test/item-level detail in the billing data —
+    // require the prescribed test to actually match one of them (case and
+    // extra-whitespace insensitive). No fallback: a same-day billing row
+    // for a *different* test must not count as a conversion.
+    chosen = withTestName.find(c => normalizeForCompare(c.testName) === normalizeForCompare(p.testGiven)) || null;
+  } else {
+    // No test-name detail available for this UHID+date window (this
+    // company's billing format doesn't carry it) — match by UHID + date
+    // alone, which is the best available signal.
+    chosen = candidates[0] || null;
+  }
+  if (chosen) { usedIds.add(chosen.id); return { matchStatus: 'matched', matchedAmount: toNum(chosen.amount), matchedBillingRef: chosen.id, consumedRef: chosen.ref }; }
+  return { matchStatus: 'leakage', matchedAmount: 0, matchedBillingRef: null, consumedRef: null };
+}
+function currentWindowDays() {
+  const raw = state.matchingConfig && state.matchingConfig.windowDays;
+  return (raw === undefined || raw === null) ? 1 : raw; // -1 means "unlimited"
+}
+
 async function runMatching() {
   const [prescSnap, dumpsSnap] = await Promise.all([
     getDocs(collection(db, 'companies', state.companyId, 'prescriptions')),
@@ -2037,8 +2181,7 @@ async function runMatching() {
     const rowsSnap = await getDocs(collection(db, 'companies', state.companyId, 'billingDumps', dDoc.id, 'rows'));
     rowsSnap.docs.forEach(r => billingRows.push({ id: r.id, ref: r.ref, ...r.data() }));
   }
-  const rawWindow = state.matchingConfig && state.matchingConfig.windowDays;
-  const windowDays = (rawWindow === undefined || rawWindow === null) ? 1 : rawWindow; // -1 means "unlimited"
+  const windowDays = currentWindowDays();
   const byUhid = {};
   billingRows.forEach(b => { (byUhid[b.uhid] = byUhid[b.uhid] || []).push(b); });
   Object.values(byUhid).forEach(list => list.sort((a, b) => (a.date < b.date ? -1 : 1)));
@@ -2048,30 +2191,8 @@ async function runMatching() {
   const sortedPresc = prescriptions.slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
   for (const p of sortedPresc) {
-    if (p.testGiven === NO_TEST_LABEL) {
-      // Nothing was prescribed on this visit — not part of conversion tracking at all.
-      prescUpdates.push({ ref: p.ref, data: { matchStatus: 'no-test', matchedAmount: 0, matchedBillingRef: null } });
-      continue;
-    }
-    const isUnlimited = windowDays === -1;
-    const windowEnd = isUnlimited ? null : addDaysISO(p.date, windowDays);
-    const candidates = (byUhid[p.uhid] || []).filter(b => !usedBillingIds.has(b.id) && b.date >= p.date && (isUnlimited || b.date <= windowEnd));
-    let chosen = null;
-    const candidatesWithTestName = candidates.filter(c => c.testName && c.testName.trim());
-    if (candidatesWithTestName.length && p.testGiven) {
-      // This UHID+date window has test/item-level detail in the billing data —
-      // require the prescribed test to actually match one of them (case and
-      // extra-whitespace insensitive). No fallback: a same-day billing row
-      // for a *different* test must not count as a conversion.
-      chosen = candidatesWithTestName.find(c => normalizeForCompare(c.testName) === normalizeForCompare(p.testGiven)) || null;
-    } else {
-      // No test-name detail available for this UHID+date window (this
-      // company's billing format doesn't carry it) — match by UHID + date
-      // alone, which is the best available signal.
-      chosen = candidates[0] || null;
-    }
-    if (chosen) { usedBillingIds.add(chosen.id); prescUpdates.push({ ref: p.ref, data: { matchStatus: 'matched', matchedAmount: toNum(chosen.amount), matchedBillingRef: chosen.id } }); }
-    else prescUpdates.push({ ref: p.ref, data: { matchStatus: 'leakage', matchedAmount: 0, matchedBillingRef: null } });
+    const decision = decideMatch(p, byUhid[p.uhid] || [], usedBillingIds, windowDays);
+    prescUpdates.push({ ref: p.ref, data: { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef } });
   }
 
   let batch = writeBatch(db), n = 0;
@@ -2088,6 +2209,50 @@ async function runMatching() {
   const matchedCount = prescUpdates.filter(u => u.data.matchStatus === 'matched').length;
   const noTestCount = prescUpdates.filter(u => u.data.matchStatus === 'no-test').length;
   return { matchedCount, leakageCount: prescUpdates.length - matchedCount - noTestCount, noTestCount, total: prescUpdates.length };
+}
+
+// Cheap alternative to runMatching() for a handful of just-created/edited
+// prescriptions (e.g. one form save). Instead of reading every prescription
+// and every billing row for the whole company, it queries only the billing
+// rows for the specific UHID(s) involved — a handful of reads instead of
+// potentially thousands. Use runMatching() for bulk operations or whenever a
+// full, guaranteed-complete re-sync is needed.
+async function quickMatchBatch(prescriptionRefs) {
+  if (!prescriptionRefs || !prescriptionRefs.length) return;
+  const prescDocs = [];
+  for (const ref of prescriptionRefs) {
+    const snap = await getDoc(ref);
+    if (snap.exists()) prescDocs.push({ id: snap.id, ref: snap.ref, ...snap.data() });
+  }
+  if (!prescDocs.length) return;
+  const windowDays = currentWindowDays();
+  const isUnlimited = windowDays === -1;
+  const dumpsSnap = await getDocs(collection(db, 'companies', state.companyId, 'billingDumps')); // cheap: just month docs
+  const monthKeys = dumpsSnap.docs.map(d => d.id).sort();
+  const usedInBatch = new Set();
+  const prescUpdates = [];
+
+  for (const p of prescDocs.slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''))) {
+    if (p.testGiven === NO_TEST_LABEL) { prescUpdates.push({ ref: p.ref, data: { matchStatus: 'no-test', matchedAmount: 0, matchedBillingRef: null } }); continue; }
+    const startMonth = monthKeyFromDate(p.date);
+    const endMonth = isUnlimited ? monthKeys[monthKeys.length - 1] || startMonth : monthKeyFromDate(addDaysISO(p.date, windowDays));
+    const relevantMonths = monthKeys.filter(mk => mk >= startMonth && mk <= endMonth);
+    let candidates = [];
+    for (const mk of relevantMonths) {
+      const qy = query(collection(db, 'companies', state.companyId, 'billingDumps', mk, 'rows'), where('uhid', '==', p.uhid));
+      const rowsSnap = await getDocs(qy);
+      rowsSnap.docs.forEach(d => { const row = { id: d.id, ref: d.ref, ...d.data() }; if (!row.used) candidates.push(row); });
+    }
+    const decision = decideMatch(p, candidates, usedInBatch, windowDays);
+    prescUpdates.push({ ref: p.ref, data: { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef, consumedRef: decision.consumedRef } });
+  }
+
+  const batch = writeBatch(db);
+  prescUpdates.forEach(u => {
+    batch.update(u.ref, { matchStatus: u.data.matchStatus, matchedAmount: u.data.matchedAmount, matchedBillingRef: u.data.matchedBillingRef });
+    if (u.data.consumedRef) batch.update(u.data.consumedRef, { used: true });
+  });
+  await batch.commit();
 }
 
 VIEW_RENDERERS['billing'] = renderBillingView;
@@ -2159,11 +2324,11 @@ function exportReportsExcel(monthly, overall, rows) {
   ];
   const dateWiseAoa = [
     ['Date', 'UHID', 'Patient Name', 'Consultant', 'Test Given', 'Test Amount', 'Status', 'Matched Amount', 'Leakage Amount', 'Entered By', 'Remarks'].concat(customFieldsTemplateHeaders()),
-    ...rows.map(r => [r.date, r.uhid, r.patientName, r.consultant || '', r.testGiven, toNum(r.testAmount), statusLabel(r), r.matchStatus === 'matched' ? toNum(r.matchedAmount) : 0, r.matchStatus === 'leakage' ? toNum(r.testAmount) : 0, r.enteredBy || '', r.remarks || ''].concat(customFieldsExportValues(r))),
+    ...rows.map(r => [isoToExcelDate(r.date), r.uhid, r.patientName, r.consultant || '', r.testGiven, toNum(r.testAmount), statusLabel(r), r.matchStatus === 'matched' ? toNum(r.matchedAmount) : 0, r.matchStatus === 'leakage' ? toNum(r.testAmount) : 0, r.enteredBy || '', r.remarks || ''].concat(customFieldsExportValues(r))),
   ];
   const wb = XLSX.utils.book_new();
   const ws1 = XLSX.utils.aoa_to_sheet(summaryAoa); ws1['!cols'] = summaryAoa[0].map(() => ({ wch: 19 }));
-  const ws2 = XLSX.utils.aoa_to_sheet(dateWiseAoa); ws2['!cols'] = dateWiseAoa[0].map(() => ({ wch: 16 }));
+  const ws2 = XLSX.utils.aoa_to_sheet(dateWiseAoa, { cellDates: true, dateNF: 'yyyy-mm-dd' }); ws2['!cols'] = dateWiseAoa[0].map(() => ({ wch: 16 }));
   XLSX.utils.book_append_sheet(wb, ws1, 'Monthly Summary');
   XLSX.utils.book_append_sheet(wb, ws2, 'Date Wise');
   XLSX.writeFile(wb, `CXDX_Report_${(state.companyName || 'Company').replace(/[^a-z0-9]+/gi, '_')}_${todayISO()}.xlsx`);

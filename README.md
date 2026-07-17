@@ -106,25 +106,28 @@ only used for Auth/Firestore, not for hosting, in this option.
 
 **Prescriptions** — a dedicated full-page form (not a popup) with Visit
 Details (Date, UHID, Patient Name, Consultant, Entered By) first, then the
-tests given, then Follow Up, then Remarks last. The **UHID field
-auto-strips spaces and forces capital letters** as you type, since matching
-depends on it being exact. One prescription visit can include several
-tests — each row is just Test + Amount, added with the button or by
-pressing **Enter** in a test row for another instantly. A running "N tests
-· ₹total" summary updates live as you add rows. Every test row defaults to
-**"No Test Given"** with the amount locked at zero — pick a real test only
-if one was actually prescribed. A visit saved this way still counts toward
-Total Prescriptions on the dashboard and reports, but is left out of Test
-Given, Conversion, and Leakage entirely (it shows as a neutral **No Test**
-badge, filterable from the Prescriptions list) — since there was nothing to
+tests given, then Follow Up, then Remarks last. **Consultant, Entered By,
+and Test Given are all type-to-search fields** — click in, type a few
+letters, and pick from the filtered list (arrow keys + Enter work too)
+rather than scrolling a long dropdown. The **UHID field auto-strips spaces
+and forces capital letters** as you type, since matching depends on it
+being exact. One prescription visit can include several tests — each row
+is just Test + Amount, added with the button or by pressing **Enter** in a
+test row for another instantly. A running "N tests · ₹total" summary
+updates live as you add rows. Every test row defaults to **"No Test
+Given"** with the amount locked at zero — pick a real test only if one was
+actually prescribed. A visit saved this way still counts toward Total
+Prescriptions on the dashboard and reports, but is left out of Test Given,
+Conversion, and Leakage entirely (it shows as a neutral **No Test** badge,
+filterable from the Prescriptions list) — since there was nothing to
 convert. **Consultation Follow Up** and **Test Follow Up** sit side by side
 in their own section near the end of the form — both are optional dates,
 and Test Follow Up applies to the whole visit rather than each test
 individually. The Prescriptions list also has a **From/To date filter**
-alongside the search
-and status pills, handy for finding an older entry to edit — all filters
-reset to blank each time you open the tab. The whole filter area can be
-collapsed with the **Hide Filters** toggle above it, for more table space.
+alongside the search and status pills, handy for finding an older entry to
+edit — all filters reset to blank each time you open the tab. The whole
+filter area can be collapsed with the **Hide Filters** toggle above it, for
+more table space.
 
 **Masters** — Doctors, Tests, and Agents are each manageable with add/edit/
 delete, and each has a **Download Template → fill in Excel → Import**
@@ -135,33 +138,47 @@ for a month that already has data replaces it (after a confirmation), just
 like the January/February flow you'd expect. Because raw billing exports
 differ company to company, each upload shows a **column-mapping step**
 where you tell CXDX which of *your* file's columns are UHID, Date, Amount,
-and (optionally) Test Name / Patient Name. That mapping is remembered as the
-default for next time, per company.
+Test Name, and (optionally) Patient Name — UHID, Date, Amount, and **Test
+Name are all required** since matching relies on all four. That mapping is
+remembered as the default for next time, per company.
+
+**Bulk prescription import** — same idea as billing dumps: pick your file
+and map its columns to Date, UHID, Patient Name (required) plus Consultant,
+Test Given, Test Amount, both Follow Up dates, Remarks, and Entered By
+(optional) — it doesn't need to match the downloadable template's exact
+headers. The preview shows how many rows are ready versus skipped (missing
+UHID or an unreadable date) *before* you commit, so a mismatch is obvious
+immediately rather than discovered after the fact.
 
 **Matching engine** — for every prescription row, CXDX looks for a billing
 row with the *same UHID*, dated on the prescription date **or within a
 configurable window after it** (default: same day or the next day — set
 this in **Settings**, or switch it to **Unlimited** to match any billing
-date on or after the prescription date, with no cutoff). If your billing
-dump has a test/item-name column mapped, the test name has to match too
-(case and spacing don't matter) — a same-day billing row for a *different*
-test is never counted as a conversion. Each billing row can only be
-consumed by one prescription, so amounts are never double-counted. A match
-marks the row **Completed** and records the actual billed amount as its
-*Conversion Value*; no match leaves it as **Leakage**, valued at the
-originally prescribed Test Amount. Matching re-runs automatically after
-every prescription entry, import, or billing upload, and can also be
-triggered manually.
+date on or after the prescription date, with no cutoff). The test name has
+to match too (case and spacing don't matter) — a same-day billing row for a
+*different* test is never counted as a conversion. Each billing row can
+only be consumed by one prescription, so amounts are never double-counted.
+A match marks the row **Completed** and records the actual billed amount as
+its *Conversion Value*; no match leaves it as **Leakage**, valued at the
+originally prescribed Test Amount.
+
+Saving a single prescription (new entry or edit) matches just that
+visit — a handful of reads, not a scan of your whole company's data. Billing
+dump uploads and bulk prescription imports **don't** auto-match, on
+purpose: uploading several months back-to-back would otherwise re-scan
+everything after every single upload, which is what burns through
+Firebase's free-tier quota fastest. Upload or import everything first, then
+click **Run Matching** once (on the Dashboard or the Billing Dumps page) to
+process it all together. Deleting a billing dump or changing Matching Rules
+still re-matches everything automatically, since those need a full,
+guaranteed-correct pass.
 
 **Reports** — a **Monthly Summary** (Total Prescriptions, Total Tests Given,
 Total Converted, Prescription/Conversion/Leakage Value, Conversion % and
 Leakage %, with an all-time Total row) and a **Date-wise Detail** view of
 every row and its status. **Export Excel** downloads both as a two-sheet
-workbook.
-
-**Bulk prescription import** — for historical data, same
-download-template-then-import pattern as the masters, available from the
-Prescriptions screen.
+workbook, with the Date column written as a real Excel date (not text) so
+it sorts, filters, and works in date formulas natively.
 
 ---
 
@@ -235,11 +252,22 @@ an Indian company:
 
 ## Scale & limitations to know about
 
-- Matching re-reads all prescriptions and all billing rows for the company
-  each time it runs — comfortable for the low tens of thousands of rows a
-  clinic/diagnostics business would typically generate, but a large
-  multi-year dataset would benefit from moving this step to a Cloud
-  Function later.
+- A full **Run Matching** pass (from the Dashboard or Billing Dumps page)
+  re-reads every prescription and every billing row for the company — fine
+  for the low tens of thousands of rows a clinic/diagnostics business would
+  typically generate, but a large multi-year dataset would benefit from
+  moving this step to a Cloud Function later. Day-to-day single prescription
+  saves use a cheap, targeted match instead (queries just that patient's
+  billing rows), so routine entry doesn't carry this cost — only bulk
+  uploads/imports and the manual full run do.
+- Firebase's free (Spark) tier has daily read/write quotas. If you're
+  loading many months of historical data at once, upload/import everything
+  first and run matching once at the end rather than after each file — see
+  "Matching engine" above. If you outgrow the free tier's quota
+  permanently, upgrading to the pay-as-you-go Blaze plan removes the daily
+  cap (Firestore is still inexpensive at this app's scale — Blaze is
+  billed per operation with no fixed monthly cost until usage is
+  substantial).
 - Deleting a company from the Super Admin console removes its Firestore
   data, but **not** the linked Firebase Authentication accounts (the client
   SDK can't delete other users' sign-in accounts for security reasons) —
@@ -252,3 +280,4 @@ an Indian company:
 - **"Firebase setup needed" screen** → `firebaseConfig` in `index.html` still has placeholder values (Step 2).
 - **"Missing or insufficient permissions"** → security rules aren't deployed yet (Step 3), or the signed-in user has no matching `users/{uid}` document.
 - **Can't sign in at all** → double check the account exists in Authentication *and* has a `users/{uid}` document with a `role` field (Step 4).
+- **"Your project has exceeded no-cost limits" in Firebase Console** → the free Spark plan's daily quota is used up; the app will start failing reads/writes until it resets (quotas reset daily) or you upgrade to Blaze (pay-as-you-go, still cheap at this scale — see "Scale & limitations"). Loading historical data in smaller batches and running matching once at the end, per the note above, avoids hitting this again.
