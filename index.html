@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
-<title>CXDX · Prescription to Conversion, Reconciled</title>
+<title>CXDX · Prescription vs Conversion Analysis</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2222%22 fill=%22%230E7C7B%22/><path d=%22M18 55 L36 55 L44 30 L56 72 L64 45 L72 55 L84 55%22 stroke=%22white%22 stroke-width=%228%22 fill=%22none%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -277,6 +277,25 @@ nav.side-nav{flex:1;padding:6px 12px;overflow-y:auto;}
 .stat-card .val.c-green{color:var(--green-600);}
 .stat-card .val.c-amber{color:var(--amber-600);}
 
+/* ---------- Dashboard stat icon badges (colorful, animated) ---------- */
+.stat-icon-badge{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:20px;height:20px;border-radius:6px;flex-shrink:0;
+  animation:statBadgePulse 2.6s ease-in-out infinite;
+  transition:transform .3s var(--ease),box-shadow .3s var(--ease);
+}
+.stat-icon-badge svg{width:12px;height:12px;stroke:#fff;stroke-width:2.6;}
+.stat-card:hover .stat-icon-badge{transform:scale(1.14) translateY(-1px);animation-play-state:paused;box-shadow:0 5px 12px 0 var(--glow);}
+.stat-icon-badge.badge-ink{background:linear-gradient(135deg,var(--ink-700),var(--ink-900));--glow:rgba(11,31,38,.5);}
+.stat-icon-badge.badge-teal{background:linear-gradient(135deg,var(--teal-400),var(--teal-700));--glow:rgba(14,148,143,.5);}
+.stat-icon-badge.badge-green{background:linear-gradient(135deg,#42D68C,var(--green-600));--glow:rgba(23,138,86,.5);}
+.stat-icon-badge.badge-amber{background:linear-gradient(135deg,#F7AC4D,var(--amber-600));--glow:rgba(181,98,13,.5);}
+@keyframes statBadgePulse{
+  0%,100%{box-shadow:0 2px 5px -1px var(--glow);}
+  50%{box-shadow:0 3px 10px 0 var(--glow);}
+}
+@media (prefers-reduced-motion: reduce){.stat-icon-badge{animation:none;}}
+
 /* ============================================================
    FORMS
    ============================================================ */
@@ -471,7 +490,7 @@ tr.total-row{position:sticky;bottom:0;}
       <div class="mark"><svg viewBox="0 0 24 24"><path d="M2 13 L7 13 L9.5 6 L13 20 L15.5 10 L17.5 13 L22 13"/></svg></div>
       <span class="wordmark">CXDX</span>
     </div>
-    <h1>Prescription to Conversion, Reconciled</h1>
+    <h1>Prescription vs Conversion Analysis</h1>
   </div>
   <form id="login-card" class="login-card">
     <div id="login-error"></div>
@@ -595,7 +614,7 @@ const state = {
   isSuperAdmin: false,
 };
 
-const DEFAULT_MATCHING_CONFIG = { windowDays: 1, billingMap: { uhid: '', date: '', amount: '', testName: '', patientName: '' } };
+const DEFAULT_MATCHING_CONFIG = { windowDays: -1, billingMap: { uhid: '', date: '', amount: '', testName: '', patientName: '' } };
 
 const MASTER_DEFS = {
   doctors: { label: 'Doctor', labelPlural: 'Doctors', fields: [
@@ -627,8 +646,6 @@ const CUSTOM_FIELD_TYPES = [
 
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-let unsavedGuard = false; // set true while a form has unsaved edits (for future use)
-
 /* ---- SECTION: ICONS ---- */
 const ICONS = {
   home:'<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1H10v-6h4v6h3.5a1 1 0 0 0 1-1v-9"/>',
@@ -658,6 +675,7 @@ const ICONS = {
   inbox:'<path d="M4 12h4.5l1.5 3h4l1.5-3H20"/><path d="M6 5h12l2 7v6a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18v-6l2-7Z"/>',
   database:'<ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5V12c0 1.7 3.6 3 8 3s8-1.3 8-3V5.5"/><path d="M4 12v6.5c0 1.7 3.6 3 8 3s8-1.3 8-3V12"/>',
   percent:'<path d="M5 19 19 5"/><circle cx="7" cy="7" r="2.3"/><circle cx="17" cy="17" r="2.3"/>',
+  banknote:'<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v.01M18 9v.01M6 15v.01M18 15v.01"/>',
 };
 function icon(name, cls) {
   const inner = ICONS[name] || ICONS.info;
@@ -823,6 +841,7 @@ async function loadCompanyContext(companyId) {
   if (!snap.exists()) throw new Error('Company not found. Contact your Super Admin.');
   const data = snap.data();
   state.companyId = companyId;
+  invalidatePrescriptionsCache();
   state.companyName = data.name;
   state.companyActive = data.active !== false;
   state.matchingConfig = Object.assign({}, DEFAULT_MATCHING_CONFIG, data.matchingConfig || {}, { billingMap: Object.assign({}, DEFAULT_MATCHING_CONFIG.billingMap, (data.matchingConfig || {}).billingMap || {}) });
@@ -1132,6 +1151,7 @@ async function enterCompany(companyId) {
 function exitCompany() {
   state.companyId = null; state.companyName = ''; state.matchingConfig = null;
   state.doctors = []; state.tests = []; state.agents = []; state.customFields = [];
+  invalidatePrescriptionsCache();
   renderShellChrome();
   navigateTo('sa-companies');
 }
@@ -1154,6 +1174,7 @@ async function deleteCompanyCascade(companyId) {
   const usersSnap = await getDocs(query(collection(db, 'users'), where('companyId', '==', companyId)));
   if (usersSnap.docs.length) { const b = writeBatch(db); usersSnap.docs.forEach(d => b.delete(d.ref)); await b.commit(); }
   await deleteDoc(doc(db, 'companies', companyId));
+  invalidatePrescriptionsCache();
   // Note: the linked Firebase Auth sign-in accounts themselves are not deletable from the client
   // SDK for security reasons — remove them from Firebase Console → Authentication if desired.
 }
@@ -1177,16 +1198,16 @@ async function renderDashboardView(content) {
     <div class="view">
       ${rows.length === 0 ? `<div class="card card-pad" style="margin-bottom:18px;background:var(--teal-50);border-color:var(--teal-100);display:flex;gap:10px;align-items:center;color:var(--teal-700);font-size:13.5px;font-weight:500;">${icon('info')} No prescriptions yet — add your first entry or import historical data to see your conversion overview.</div>` : ''}
       <div class="stat-grid">
-        <div class="stat-card accent-ink"><div class="lbl">${icon('fileText')} Total Prescriptions</div><div class="val" id="cu-1">0</div></div>
-        <div class="stat-card accent-teal"><div class="lbl">${icon('flask')} Total Test Given</div><div class="val" id="cu-2">0</div></div>
-        <div class="stat-card accent-green"><div class="lbl">${icon('checkCircle')} Converted Tests</div><div class="val c-green" id="cu-3">0</div></div>
-        <div class="stat-card accent-amber"><div class="lbl">${icon('alertTriangle')} Leakage Tests</div><div class="val c-amber" id="cu-4">0</div></div>
+        <div class="stat-card accent-ink"><div class="lbl"><span class="stat-icon-badge badge-ink">${icon('fileText')}</span> Total Prescriptions</div><div class="val" id="cu-1">0</div></div>
+        <div class="stat-card accent-teal"><div class="lbl"><span class="stat-icon-badge badge-teal">${icon('flask')}</span> Total Test Given</div><div class="val" id="cu-2">0</div></div>
+        <div class="stat-card accent-green"><div class="lbl"><span class="stat-icon-badge badge-green">${icon('checkCircle')}</span> Converted Tests</div><div class="val c-green" id="cu-3">0</div></div>
+        <div class="stat-card accent-amber"><div class="lbl"><span class="stat-icon-badge badge-amber">${icon('alertTriangle')}</span> Leakage Tests</div><div class="val c-amber" id="cu-4">0</div></div>
       </div>
       <div class="stat-grid">
-        <div class="stat-card accent-ink"><div class="lbl">Prescription Value</div><div class="val" id="cu-5">${CURRENCY_SYMBOL}0</div></div>
-        <div class="stat-card accent-green"><div class="lbl">${icon('checkCircle')} Conversion Value</div><div class="val c-green" id="cu-6">${CURRENCY_SYMBOL}0</div></div>
-        <div class="stat-card accent-amber"><div class="lbl">${icon('alertTriangle')} Leakage Value</div><div class="val c-amber" id="cu-7">${CURRENCY_SYMBOL}0</div></div>
-        <div class="stat-card accent-teal"><div class="lbl">${icon('percent')} Conversion Rate</div><div class="val" id="cu-8">0%</div>
+        <div class="stat-card accent-ink"><div class="lbl"><span class="stat-icon-badge badge-ink">${icon('banknote')}</span> Prescription Value</div><div class="val" id="cu-5">${CURRENCY_SYMBOL}0</div></div>
+        <div class="stat-card accent-green"><div class="lbl"><span class="stat-icon-badge badge-green">${icon('checkCircle')}</span> Conversion Value</div><div class="val c-green" id="cu-6">${CURRENCY_SYMBOL}0</div></div>
+        <div class="stat-card accent-amber"><div class="lbl"><span class="stat-icon-badge badge-amber">${icon('alertTriangle')}</span> Leakage Value</div><div class="val c-amber" id="cu-7">${CURRENCY_SYMBOL}0</div></div>
+        <div class="stat-card accent-teal"><div class="lbl"><span class="stat-icon-badge badge-teal">${icon('percent')}</span> Conversion Rate</div><div class="val" id="cu-8">0%</div>
           <div class="progress-track" style="margin-top:10px;"><div class="progress-fill" id="cu-8-bar" style="width:0%;"></div></div>
         </div>
       </div>
@@ -1264,9 +1285,18 @@ function renderDashCharts(monthly, stats) {
 VIEW_RENDERERS['dashboard'] = renderDashboardView;
 
 /* ---- SECTION: PRESCRIPTIONS ---- */
-async function loadAllPrescriptions() {
+// In-memory cache of the company's prescriptions, shared by Dashboard/Prescriptions/Reports.
+// Tagged with the companyId it was fetched for, so a stale cache can never leak across companies
+// even if a call site forgets to invalidate it.
+let prescriptionsCache = null;
+let prescriptionsCacheCompanyId = null;
+function invalidatePrescriptionsCache() { prescriptionsCache = null; prescriptionsCacheCompanyId = null; }
+async function loadAllPrescriptions(forceRefresh) {
+  if (!forceRefresh && prescriptionsCache && prescriptionsCacheCompanyId === state.companyId) return prescriptionsCache;
   const snap = await getDocs(query(collection(db, 'companies', state.companyId, 'prescriptions'), orderBy('date', 'desc')));
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  prescriptionsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  prescriptionsCacheCompanyId = state.companyId;
+  return prescriptionsCache;
 }
 function computeSummaryStats(rows) {
   const distinctVisits = new Set(rows.map(r => (r.uhid || '') + '|' + (r.date || '')));
@@ -1688,7 +1718,7 @@ function addTestRow() {
 async function deletePrescriptionRow(id, row) {
   const ok = await confirmDialog('Delete this prescription row?', `${row.patientName} — ${row.testGiven} (${formatDateDisplay(row.date)}) will be permanently removed.`, 'Delete', true);
   if (!ok) return;
-  try { await deleteDoc(doc(db, 'companies', state.companyId, 'prescriptions', id)); showToast('Deleted', 'success'); navigateTo('prescriptions'); }
+  try { await deleteDoc(doc(db, 'companies', state.companyId, 'prescriptions', id)); invalidatePrescriptionsCache(); showToast('Deleted', 'success'); navigateTo('prescriptions'); }
   catch (e) { showToast(friendlyError(e), 'error'); }
 }
 
@@ -1817,6 +1847,7 @@ async function bulkImportPrescriptions(rows) {
     if (n === 450) { await batch.commit(); batch = writeBatch(db); n = 0; }
   }
   if (n > 0) await batch.commit();
+  invalidatePrescriptionsCache();
 }
 
 VIEW_RENDERERS['prescriptions'] = renderPrescriptionsView;
@@ -2119,7 +2150,7 @@ async function uploadBillingDump(monthKey, fileRows, map) {
     const uhidVal = normalizeUHID(r[map.uhid]);
     const dateVal = parseFlexibleDate(r[map.date]);
     if (!uhidVal || !dateVal) continue;
-    const rowData = { uhid: uhidVal, date: dateVal, amount: toNum(r[map.amount]), testName: map.testName ? (r[map.testName] || '').toString().trim() : '', patientName: map.patientName ? (r[map.patientName] || '').toString().trim() : '', used: false, usedBy: null };
+    const rowData = { uhid: uhidVal, date: dateVal, amount: toNum(r[map.amount]), testName: map.testName ? (r[map.testName] || '').toString().trim() : '', patientName: map.patientName ? (r[map.patientName] || '').toString().trim() : '', used: false };
     batch.set(doc(collection(db, 'companies', state.companyId, 'billingDumps', monthKey, 'rows')), rowData);
     n++; count++;
     if (n === 450) { await batch.commit(); batch = writeBatch(db); n = 0; }
@@ -2167,7 +2198,7 @@ function decideMatch(p, candidateRows, usedIds, windowDays) {
 }
 function currentWindowDays() {
   const raw = state.matchingConfig && state.matchingConfig.windowDays;
-  return (raw === undefined || raw === null) ? 1 : raw; // -1 means "unlimited"
+  return (raw === undefined || raw === null) ? -1 : raw; // -1 means "unlimited"
 }
 
 async function runMatching() {
@@ -2208,6 +2239,7 @@ async function runMatching() {
 
   const matchedCount = prescUpdates.filter(u => u.data.matchStatus === 'matched').length;
   const noTestCount = prescUpdates.filter(u => u.data.matchStatus === 'no-test').length;
+  invalidatePrescriptionsCache();
   return { matchedCount, leakageCount: prescUpdates.length - matchedCount - noTestCount, noTestCount, total: prescUpdates.length };
 }
 
@@ -2253,28 +2285,53 @@ async function quickMatchBatch(prescriptionRefs) {
     if (u.data.consumedRef) batch.update(u.data.consumedRef, { used: true });
   });
   await batch.commit();
+  invalidatePrescriptionsCache();
 }
 
 VIEW_RENDERERS['billing'] = renderBillingView;
 
 /* ---- SECTION: REPORTS ---- */
+let rpDateFrom = '', rpDateTo = '';
 async function renderReportsView(content) {
+  rpDateFrom = ''; rpDateTo = '';
   $('#topbar-actions').innerHTML = `<button class="btn btn-primary" id="rp-export">${icon('download')} Export Excel</button>`;
   content.innerHTML = `<div class="view">
+    <div class="card" style="margin-bottom:18px;">
+      <div class="table-toolbar">
+        <div class="u-flex u-gap-8" style="align-items:center;flex-wrap:wrap;">
+          <span class="u-muted" style="font-size:12px;font-weight:600;">Date range:</span>
+          <input type="date" id="rp-date-from" style="max-width:160px;" title="From date">
+          <span class="u-muted" style="font-size:12px;">to</span>
+          <input type="date" id="rp-date-to" style="max-width:160px;" title="To date">
+          <button class="btn btn-ghost btn-sm" id="rp-date-clear">${icon('x')} Clear</button>
+        </div>
+      </div>
+    </div>
     <div class="pill-filters" id="rp-tabs" style="margin-bottom:18px;">
       <button class="pill active" data-t="summary">Monthly Summary</button>
       <button class="pill" data-t="datewise">Date-wise Detail</button>
     </div>
     <div id="rp-body"><div class="u-center" style="padding:60px 0;"><div class="loader-ring"></div></div></div>
   </div>`;
-  const rows = await loadAllPrescriptions();
-  state.prescriptions = rows;
-  const monthly = groupByMonth(rows);
-  const overall = computeSummaryStats(rows);
+  const allRows = await loadAllPrescriptions();
   let rpTab = 'summary';
+  let rows = allRows, monthly = groupByMonth(rows), overall = computeSummaryStats(rows);
+  function applyDateFilter() {
+    rows = (!rpDateFrom && !rpDateTo) ? allRows : allRows.filter(r => (!rpDateFrom || r.date >= rpDateFrom) && (!rpDateTo || r.date <= rpDateTo));
+    state.prescriptions = rows;
+    monthly = groupByMonth(rows);
+    overall = computeSummaryStats(rows);
+  }
   function renderBody() { if (rpTab === 'summary') renderMonthlySummaryTable(monthly, overall); else renderDateWiseTable(rows); }
   renderBody();
   $$('#rp-tabs .pill').forEach(p => p.addEventListener('click', () => { $$('#rp-tabs .pill').forEach(x => x.classList.remove('active')); p.classList.add('active'); rpTab = p.dataset.t; renderBody(); }));
+  $('#rp-date-from').addEventListener('change', (e) => { rpDateFrom = e.target.value; applyDateFilter(); renderBody(); });
+  $('#rp-date-to').addEventListener('change', (e) => { rpDateTo = e.target.value; applyDateFilter(); renderBody(); });
+  $('#rp-date-clear').addEventListener('click', () => {
+    rpDateFrom = ''; rpDateTo = '';
+    $('#rp-date-from').value = ''; $('#rp-date-to').value = '';
+    applyDateFilter(); renderBody();
+  });
   $('#rp-export').addEventListener('click', () => exportReportsExcel(monthly, overall, rows));
 }
 
@@ -2315,6 +2372,9 @@ function dwRowHtml(r) {
   return `<tr><td>${formatDateDisplay(r.date)}</td><td class="uhid-cell">${escapeHtml(r.uhid)}</td><td>${escapeHtml(r.patientName)}</td><td>${escapeHtml(r.consultant || '—')}</td><td>${escapeHtml(r.testGiven)}</td><td class="num">${formatMoney(r.testAmount)}</td><td>${statusBadgeHtml(r)}</td><td class="num">${matched ? formatMoney(r.matchedAmount) : '—'}</td><td class="num">${matched || noTest ? '—' : formatMoney(r.testAmount)}</td><td>${escapeHtml(r.enteredBy || '—')}</td>${customFieldsTableCellsHtml(r)}</tr>`;
 }
 
+// Converts a Firestore Timestamp (the prescription's createdAt) into a real JS Date for Excel export, or '' if absent.
+function tsToExcelDateTime(ts) { return (ts && typeof ts.toDate === 'function') ? ts.toDate() : ''; }
+
 function exportReportsExcel(monthly, overall, rows) {
   const months = Object.keys(monthly).filter(m => m !== 'unknown').sort();
   const summaryAoa = [
@@ -2322,13 +2382,22 @@ function exportReportsExcel(monthly, overall, rows) {
     ['Total', overall.totalPrescription, overall.totalTestGiven, overall.totalConversion, overall.prescriptionValue, overall.conversionValue, overall.leakageValue, formatPct(overall.conversionPct), formatPct(overall.leakagePct)],
     ...months.map(mk => { const s = monthly[mk]; return [monthLabel(mk), s.totalPrescription, s.totalTestGiven, s.totalConversion, s.prescriptionValue, s.conversionValue, s.leakageValue, formatPct(s.conversionPct), formatPct(s.leakagePct)]; }),
   ];
+  // Column order: ... Remarks, Entered On (auto date+time), [custom fields], Entered By (last)
+  const dwHeaders = ['Date', 'UHID', 'Patient Name', 'Consultant', 'Test Given', 'Test Amount', 'Status', 'Matched Amount', 'Leakage Amount', 'Remarks', 'Entered On'].concat(customFieldsTemplateHeaders()).concat(['Entered By']);
+  const enteredOnColIdx = 10;
   const dateWiseAoa = [
-    ['Date', 'UHID', 'Patient Name', 'Consultant', 'Test Given', 'Test Amount', 'Status', 'Matched Amount', 'Leakage Amount', 'Entered By', 'Remarks'].concat(customFieldsTemplateHeaders()),
-    ...rows.map(r => [isoToExcelDate(r.date), r.uhid, r.patientName, r.consultant || '', r.testGiven, toNum(r.testAmount), statusLabel(r), r.matchStatus === 'matched' ? toNum(r.matchedAmount) : 0, r.matchStatus === 'leakage' ? toNum(r.testAmount) : 0, r.enteredBy || '', r.remarks || ''].concat(customFieldsExportValues(r))),
+    dwHeaders,
+    ...rows.map(r => [isoToExcelDate(r.date), r.uhid, r.patientName, r.consultant || '', r.testGiven, toNum(r.testAmount), statusLabel(r), r.matchStatus === 'matched' ? toNum(r.matchedAmount) : 0, r.matchStatus === 'leakage' ? toNum(r.testAmount) : 0, r.remarks || '', tsToExcelDateTime(r.createdAt)].concat(customFieldsExportValues(r)).concat([r.enteredBy || ''])),
   ];
   const wb = XLSX.utils.book_new();
   const ws1 = XLSX.utils.aoa_to_sheet(summaryAoa); ws1['!cols'] = summaryAoa[0].map(() => ({ wch: 19 }));
-  const ws2 = XLSX.utils.aoa_to_sheet(dateWiseAoa, { cellDates: true, dateNF: 'yyyy-mm-dd' }); ws2['!cols'] = dateWiseAoa[0].map(() => ({ wch: 16 }));
+  const ws2 = XLSX.utils.aoa_to_sheet(dateWiseAoa, { cellDates: true, dateNF: 'yyyy-mm-dd' });
+  ws2['!cols'] = dateWiseAoa[0].map(() => ({ wch: 16 }));
+  ws2['!cols'][enteredOnColIdx] = { wch: 19 };
+  for (let r = 1; r < dateWiseAoa.length; r++) {
+    const cellRef = XLSX.utils.encode_cell({ r, c: enteredOnColIdx });
+    if (ws2[cellRef] && ws2[cellRef].t === 'd') ws2[cellRef].z = 'yyyy-mm-dd hh:mm';
+  }
   XLSX.utils.book_append_sheet(wb, ws1, 'Monthly Summary');
   XLSX.utils.book_append_sheet(wb, ws2, 'Date Wise');
   XLSX.writeFile(wb, `CXDX_Report_${(state.companyName || 'Company').replace(/[^a-z0-9]+/gi, '_')}_${todayISO()}.xlsx`);
