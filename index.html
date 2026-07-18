@@ -1085,6 +1085,10 @@ async function openManageCompanyModal(companyId) {
     <div class="u-between" style="margin-bottom:10px;"><span class="section-label" style="margin-bottom:0;">Admin Users (${admins.length})</span><button class="btn btn-secondary btn-sm" id="mc-add-admin">${icon('plus')} Add Admin</button></div>
     <div id="mc-admins-list">${admins.length ? admins.map(a => adminRowHtml(a)).join('') : `<p class="u-muted" style="font-size:13px;padding:8px 0;">No admins yet — add one so this company can sign in.</p>`}</div>
     <div class="divider"></div>
+    <div class="u-between" style="margin-bottom:10px;"><span class="section-label" style="margin-bottom:0;">Bulk Delete Tools</span></div>
+    <p style="font-size:12.5px;color:var(--slate-500);margin:-4px 0 10px;">Delete a range of prescriptions or clean up master data for this company.</p>
+    <button class="btn btn-secondary btn-sm" id="mc-bulk-delete" style="margin-bottom:2px;">${icon('trash')} Open Bulk Delete Tools</button>
+    <div class="divider"></div>
     <span class="section-label" style="color:var(--red-600);">Danger Zone</span>
     <button class="btn btn-danger btn-sm" id="mc-delete">${icon('trash')} Permanently Delete Company</button>
   `;
@@ -1100,6 +1104,7 @@ async function openManageCompanyModal(companyId) {
     closeModal(); navigateTo('sa-companies');
   };
   $('#mc-add-admin').onclick = () => openAddAdminModal(companyId);
+  $('#mc-bulk-delete').onclick = () => openBulkDeleteModal(companyId, c.name, c.matchingConfig);
   admins.forEach(a => {
     const btn = document.getElementById('reset-' + a.id);
     if (btn) btn.addEventListener('click', async () => {
@@ -1142,6 +1147,118 @@ function openAddAdminModal(companyId) {
     try { await createCompanyAdmin(companyId, name, email, pass); showToast('Admin added', 'success'); closeModal(); openManageCompanyModal(companyId); }
     catch (err) { showToast(friendlyError(err), 'error'); setBtnLoading(btn, false, `${icon('plus')} Add Admin`); }
   };
+}
+
+// Super Admin only — reached via Manage Company → Bulk Delete Tools. Lets a Super Admin wipe a
+// date range of prescriptions (with matching re-run afterward to release any billing rows those
+// prescriptions had claimed) and/or multi-select master records to delete, for ANY company —
+// so every query here takes an explicit companyId rather than relying on state.companyId.
+function openBulkDeleteModal(companyId, companyName, companyMatchingConfig, initialMasterTab) {
+  const firstTab = initialMasterTab || Object.keys(MASTER_DEFS)[0];
+  openModal(`
+    <div class="modal-head"><h3>Bulk Delete — ${escapeHtml(companyName)}</h3><button class="icon-btn" id="m-x">${icon('x')}</button></div>
+    <div class="modal-body">
+      <span class="section-label">Prescriptions by Date Range</span>
+      <p style="font-size:12.5px;color:var(--slate-500);margin:-4px 0 12px;">Permanently deletes every prescription dated within the range, for this company only.</p>
+      <div class="u-flex u-gap-8" style="align-items:end;flex-wrap:wrap;margin-bottom:8px;">
+        <div class="field-wrap" style="width:160px;"><label>From</label><input type="date" id="bd-rx-from"></div>
+        <div class="field-wrap" style="width:160px;"><label>To</label><input type="date" id="bd-rx-to"></div>
+        <button class="btn btn-danger-solid btn-sm" id="bd-rx-delete">${icon('trash')} Delete Range</button>
+      </div>
+      <div class="divider"></div>
+      <span class="section-label">Master Data</span>
+      <p style="font-size:12.5px;color:var(--slate-500);margin:-4px 0 12px;">Prescriptions that already reference a deleted record keep the old value as free text — they are not affected.</p>
+      <div class="pill-filters" id="bd-master-tabs" style="margin-bottom:12px;">${Object.keys(MASTER_DEFS).map((k) => `<button class="pill ${k === firstTab ? 'active' : ''}" data-t="${k}">${MASTER_DEFS[k].labelPlural}</button>`).join('')}</div>
+      <div class="u-between" style="margin-bottom:8px;">
+        <label class="checkbox-row"><input type="checkbox" id="bd-select-all"> Select all</label>
+        <button class="btn btn-danger-solid btn-sm" id="bd-master-delete" disabled>${icon('trash')} Delete Selected (0)</button>
+      </div>
+      <div id="bd-master-list" style="max-height:230px;overflow-y:auto;border:1px solid var(--line-100);border-radius:var(--radius-sm);"><div class="u-center" style="padding:30px 0;"><div class="loader-ring"></div></div></div>
+    </div>
+  `, { wide: true });
+  $('#m-x').onclick = closeModal;
+
+  $('#bd-rx-delete').onclick = async () => {
+    const from = $('#bd-rx-from').value, to = $('#bd-rx-to').value;
+    if (!from || !to) { showToast('Select both From and To dates', 'error'); return; }
+    if (from > to) { showToast('From date must be on or before To date', 'error'); return; }
+    const btn = $('#bd-rx-delete'); const label = btn.innerHTML; setBtnLoading(btn, true);
+    try {
+      const rxQuery = query(collection(db, 'companies', companyId, 'prescriptions'), where('date', '>=', from), where('date', '<=', to));
+      const countSnap = await getCountFromServer(rxQuery);
+      const count = countSnap.data().count;
+      setBtnLoading(btn, false, label);
+      if (!count) { showToast('No prescriptions found in that date range', 'info'); return; }
+      // confirmDialog() replaces the modal entirely, so bdMasterTab is captured now and
+      // the whole modal is deliberately re-opened from scratch after the delete below.
+      const ok = await confirmDialog(
+        `Delete ${count} prescription${count === 1 ? '' : 's'}?`,
+        `Every prescription for ${companyName} dated ${formatDateDisplay(from)} to ${formatDateDisplay(to)} will be permanently deleted, and matching will be re-run afterward to release any billing rows they had claimed. This cannot be undone.`,
+        `Delete ${count} Row${count === 1 ? '' : 's'}`, true
+      );
+      if (!ok) return;
+      showToast('Deleting…', 'info');
+      const snap = await getDocs(rxQuery);
+      let batch = writeBatch(db), n = 0;
+      for (const d of snap.docs) { batch.delete(d.ref); n++; if (n === 450) { await batch.commit(); batch = writeBatch(db); n = 0; } }
+      if (n > 0) await batch.commit();
+      await runMatching(companyId, windowDaysFromConfig(companyMatchingConfig));
+      showToast(`${snap.docs.length} prescription(s) deleted`, 'success');
+      openBulkDeleteModal(companyId, companyName, companyMatchingConfig, bdMasterTab);
+    } catch (e) { showToast(friendlyError(e), 'error'); setBtnLoading(btn, false, label); }
+  };
+
+  let bdMasterTab = firstTab;
+  async function loadBdMasterList(type) {
+    bdMasterTab = type;
+    $('#bd-master-list').innerHTML = `<div class="u-center" style="padding:30px 0;"><div class="loader-ring"></div></div>`;
+    const snap = await getDocs(collection(db, 'companies', companyId, type));
+    const rows = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    drawBdMasterList(rows);
+  }
+  function drawBdMasterList(rows) {
+    const def = MASTER_DEFS[bdMasterTab];
+    $('#bd-select-all').checked = false;
+    updateBdDeleteBtn();
+    $('#bd-master-list').innerHTML = rows.length ? rows.map(r => `<label class="checkbox-row" style="padding:9px 12px;border-bottom:1px solid var(--line-100);"><input type="checkbox" class="bd-m-cb" data-id="${r.id}"> ${escapeHtml(r.name)}${r.amount !== undefined ? ' — ' + formatMoney(r.amount) : ''}</label>`).join('')
+      : `<div class="empty-state" style="padding:30px 0;">${icon('database')}<h4>No ${def.labelPlural.toLowerCase()}</h4></div>`;
+    $$('.bd-m-cb').forEach(cb => cb.addEventListener('change', updateBdDeleteBtn));
+  }
+  function updateBdDeleteBtn() {
+    const n = $$('.bd-m-cb:checked').length;
+    const btn = $('#bd-master-delete');
+    btn.disabled = n === 0;
+    btn.innerHTML = `${icon('trash')} Delete Selected (${n})`;
+  }
+  $$('#bd-master-tabs .pill').forEach(p => p.addEventListener('click', () => {
+    $$('#bd-master-tabs .pill').forEach(x => x.classList.remove('active'));
+    p.classList.add('active');
+    loadBdMasterList(p.dataset.t);
+  }));
+  $('#bd-select-all').addEventListener('change', (e) => { $$('.bd-m-cb').forEach(cb => cb.checked = e.target.checked); updateBdDeleteBtn(); });
+  $('#bd-master-delete').onclick = async () => {
+    const ids = $$('.bd-m-cb:checked').map(cb => cb.dataset.id);
+    if (!ids.length) return;
+    const def = MASTER_DEFS[bdMasterTab];
+    // confirmDialog() replaces the modal entirely — re-open fresh afterward rather than
+    // trying to update elements that confirmDialog has already torn down.
+    const ok = await confirmDialog(
+      `Delete ${ids.length} ${def.labelPlural.toLowerCase()}?`,
+      `These records will be permanently removed from ${companyName}'s ${def.labelPlural}. Existing prescriptions that reference them keep the old value as free text and are not changed.`,
+      `Delete ${ids.length}`, true
+    );
+    if (!ok) return;
+    showToast('Deleting…', 'info');
+    try {
+      let batch = writeBatch(db), n = 0;
+      for (const id of ids) { batch.delete(doc(db, 'companies', companyId, bdMasterTab, id)); n++; if (n === 450) { await batch.commit(); batch = writeBatch(db); n = 0; } }
+      if (n > 0) await batch.commit();
+      if (companyId === state.companyId) await loadMasters();
+      showToast(`${ids.length} deleted`, 'success');
+      openBulkDeleteModal(companyId, companyName, companyMatchingConfig, bdMasterTab);
+    } catch (e) { showToast(friendlyError(e), 'error'); }
+  };
+  loadBdMasterList(firstTab);
 }
 
 async function enterCompany(companyId) {
@@ -2196,23 +2313,27 @@ function decideMatch(p, candidateRows, usedIds, windowDays) {
   if (chosen) { usedIds.add(chosen.id); return { matchStatus: 'matched', matchedAmount: toNum(chosen.amount), matchedBillingRef: chosen.id, consumedRef: chosen.ref }; }
   return { matchStatus: 'leakage', matchedAmount: 0, matchedBillingRef: null, consumedRef: null };
 }
-function currentWindowDays() {
-  const raw = state.matchingConfig && state.matchingConfig.windowDays;
+function windowDaysFromConfig(cfg) {
+  const raw = cfg && cfg.windowDays;
   return (raw === undefined || raw === null) ? -1 : raw; // -1 means "unlimited"
 }
+function currentWindowDays() { return windowDaysFromConfig(state.matchingConfig); }
 
-async function runMatching() {
+// companyId/windowDaysOverride let this run against a company other than the one currently
+// entered (used by the Super Admin's bulk-delete tools). Both default to the active session.
+async function runMatching(companyId, windowDaysOverride) {
+  companyId = companyId || state.companyId;
   const [prescSnap, dumpsSnap] = await Promise.all([
-    getDocs(collection(db, 'companies', state.companyId, 'prescriptions')),
-    getDocs(collection(db, 'companies', state.companyId, 'billingDumps')),
+    getDocs(collection(db, 'companies', companyId, 'prescriptions')),
+    getDocs(collection(db, 'companies', companyId, 'billingDumps')),
   ]);
   const prescriptions = prescSnap.docs.map(d => ({ id: d.id, ref: d.ref, ...d.data() }));
   let billingRows = [];
   for (const dDoc of dumpsSnap.docs) {
-    const rowsSnap = await getDocs(collection(db, 'companies', state.companyId, 'billingDumps', dDoc.id, 'rows'));
+    const rowsSnap = await getDocs(collection(db, 'companies', companyId, 'billingDumps', dDoc.id, 'rows'));
     rowsSnap.docs.forEach(r => billingRows.push({ id: r.id, ref: r.ref, ...r.data() }));
   }
-  const windowDays = currentWindowDays();
+  const windowDays = windowDaysOverride !== undefined ? windowDaysOverride : currentWindowDays();
   const byUhid = {};
   billingRows.forEach(b => { (byUhid[b.uhid] = byUhid[b.uhid] || []).push(b); });
   Object.values(byUhid).forEach(list => list.sort((a, b) => (a.date < b.date ? -1 : 1)));
@@ -2239,7 +2360,7 @@ async function runMatching() {
 
   const matchedCount = prescUpdates.filter(u => u.data.matchStatus === 'matched').length;
   const noTestCount = prescUpdates.filter(u => u.data.matchStatus === 'no-test').length;
-  invalidatePrescriptionsCache();
+  if (companyId === state.companyId) invalidatePrescriptionsCache();
   return { matchedCount, leakageCount: prescUpdates.length - matchedCount - noTestCount, noTestCount, total: prescUpdates.length };
 }
 
