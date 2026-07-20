@@ -129,6 +129,20 @@ a{color:inherit;}
   100%{stroke-dasharray:6 460;stroke-dashoffset:-466;}
 }
 
+/* Compact traveling-pulse loading state for the Run Matching button — same technique as
+   .pulse-trace above, sized to sit inline in a button. Path length is 76.5 units. */
+.btn-pulse-trace{display:inline-flex;align-items:center;}
+.btn-pulse-trace svg{width:44px;height:16px;overflow:visible;}
+.btn-pulse-trace path{fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+.btn-pulse-trace path.ghost{stroke:var(--teal-100);}
+.btn-pulse-trace path.run{stroke:var(--teal-700);stroke-dasharray:4 76;stroke-dashoffset:0;animation:btn-trace-run 1.4s linear infinite;}
+@keyframes btn-trace-run{
+  0%{stroke-dashoffset:0;}
+  85%{stroke-dashoffset:-76;}
+  100%{stroke-dashoffset:-80;}
+}
+@media (prefers-reduced-motion: reduce){.btn-pulse-trace path.run{animation:none;stroke-dasharray:none;}}
+
 /* ============================================================
    LOGIN
    ============================================================ */
@@ -457,6 +471,7 @@ tr.total-row{position:sticky;bottom:0;}
 .role-tag{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:99px;text-transform:uppercase;letter-spacing:0.4px;}
 .role-tag.superadmin{background:var(--ink-800);color:var(--teal-400);}
 .role-tag.admin{background:var(--teal-100);color:var(--teal-700);}
+.role-tag.agent{background:var(--amber-100);color:var(--amber-600);}
 
 #global-loader{position:fixed;inset:0;background:var(--paper-50);z-index:500;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;}
 
@@ -572,7 +587,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc,
-  collection, getDocs, query, where, orderBy, writeBatch, serverTimestamp,
+  collection, getDocs, query, where, orderBy, writeBatch, serverTimestamp, increment, startAfter,
   getCountFromServer, limit as fsLimit
 } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
 
@@ -603,15 +618,16 @@ function getSecondaryAuth() {
 
 /* ---- SECTION: STATE & CONSTANTS ---- */
 const state = {
-  user: null,            // {uid, name, email, role, companyId}
+  user: null,            // {uid, name, email, role, companyId, canUploadBilling}
   companyId: null,       // active company context (admin: own; superadmin: entered company or null)
   companyName: '',
   companyActive: true,
   matchingConfig: null,  // {windowDays, billingMap:{uhid,date,amount,testName,patientName}}
-  doctors: [], tests: [], agents: [], customFields: [],
+  doctors: [], tests: [], customFields: [],
   prescriptions: [],     // cache for current filtered view
   viewParams: {},
   isSuperAdmin: false,
+  isAgent: false,
 };
 
 const DEFAULT_MATCHING_CONFIG = { windowDays: -1, billingMap: { uhid: '', date: '', amount: '', testName: '', patientName: '' } };
@@ -624,9 +640,6 @@ const MASTER_DEFS = {
   tests: { label: 'Test', labelPlural: 'Tests', fields: [
       { key: 'name', label: 'Test Name', type: 'text', required: true },
       { key: 'amount', label: 'Amount', type: 'number', required: true },
-    ] },
-  agents: { label: 'Agent', labelPlural: 'Agents', fields: [
-      { key: 'name', label: 'Agent Name', type: 'text', required: true },
     ] },
 };
 
@@ -653,7 +666,7 @@ const ICONS = {
   uploadCloud:'<path d="M7 18a4.5 4.5 0 0 1-1-8.9A5.5 5.5 0 0 1 16.9 8.1 4 4 0 0 1 18 16"/><path d="M12 11v8M9 14l3-3 3 3"/>',
   flask:'<path d="M9 2h6M10 2v6.5L4.8 18a1.8 1.8 0 0 0 1.6 2.7h11.2a1.8 1.8 0 0 0 1.6-2.7L14 8.5V2"/><path d="M7.5 14.5h9"/>',
   barChart:'<path d="M4 20V10M12 20V4M20 20v-7"/><path d="M2.5 20h19"/>',
-  settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H4a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.9.3H10a1.7 1.7 0 0 0 1-1.6V4a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.9V10a1.7 1.7 0 0 0 1.6 1H20a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.6 1Z"/>',
+  settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"/>',
   building:'<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 8h1M14 8h1M9 12h1M14 12h1M9 16h1M14 16h1M10 21v-3h4v3"/>',
   plusCircle:'<circle cx="12" cy="12" r="9.5"/><path d="M12 8v8M8 12h8"/>',
   plus:'<path d="M12 5v14M5 12h14"/>',
@@ -785,6 +798,19 @@ function setBtnLoading(btn, loading, labelWhenDone) {
   if (loading) { btn.dataset.label = btn.innerHTML; btn.innerHTML = '<span class="loader-ring" style="border-color:rgba(255,255,255,.4);border-top-color:#fff;width:16px;height:16px;"></span>'; btn.disabled = true; }
   else { btn.innerHTML = labelWhenDone || btn.dataset.label || btn.innerHTML; btn.disabled = false; }
 }
+// Dedicated loading state for the Billing Dumps "Run Matching" button — a full matching pass can
+// take a while on larger companies, so this gets a richer indicator than the plain spinner:
+// a small traveling pulse along an ECG-style trace, echoing the app's own logo/login motif.
+function setRunMatchingBtnLoading(btn, loading, labelWhenDone) {
+  if (loading) {
+    btn.dataset.label = btn.innerHTML;
+    btn.innerHTML = `<span class="btn-pulse-trace"><svg viewBox="0 0 60 20" preserveAspectRatio="none"><path class="ghost" d="M0 10 L18 10 L23 4 L29 16 L34 7 L38 10 L60 10"/><path class="run" d="M0 10 L18 10 L23 4 L29 16 L34 7 L38 10 L60 10"/></svg></span><span>Matching…</span>`;
+    btn.disabled = true;
+  } else {
+    btn.innerHTML = labelWhenDone || btn.dataset.label || btn.innerHTML;
+    btn.disabled = false;
+  }
+}
 
 function friendlyError(e) {
   const code = (e && e.code) || '';
@@ -853,7 +879,7 @@ async function loadUserProfile(fbUser) {
   const snap = await getDoc(doc(db, 'users', fbUser.uid));
   if (!snap.exists()) throw new Error('NO_PROFILE');
   const data = snap.data();
-  return { uid: fbUser.uid, email: fbUser.email, name: data.name || fbUser.email, role: data.role, companyId: data.companyId || null };
+  return { uid: fbUser.uid, email: fbUser.email, name: data.name || fbUser.email, role: data.role, companyId: data.companyId || null, canUploadBilling: data.canUploadBilling === true };
 }
 
 function beginSession() {
@@ -863,7 +889,8 @@ function beginSession() {
       const profile = await loadUserProfile(fbUser);
       state.user = profile;
       state.isSuperAdmin = profile.role === 'superadmin';
-      if (profile.role === 'admin') {
+      state.isAgent = profile.role === 'agent';
+      if (profile.role === 'admin' || profile.role === 'agent') {
         if (!profile.companyId) throw new Error('Your account is not linked to a company yet. Contact your Super Admin.');
         await loadCompanyContext(profile.companyId);
       }
@@ -899,6 +926,7 @@ $('#login-card').addEventListener('submit', async (e) => {
 $('#logout-btn').addEventListener('click', async () => {
   await signOut(auth);
   state.companyId = null; state.companyName = ''; state.user = null;
+  state.isSuperAdmin = false; state.isAgent = false;
   showLoginScreen();
 });
 
@@ -910,7 +938,9 @@ const VIEW_TITLES = {
   'prescriptions': ['Prescriptions', 'Entry and records'],
   'rx-form': ['New Prescription', 'Add a prescription entry'],
   'billing': ['Billing Dumps', 'Monthly raw billing uploads'],
-  'masters': ['Masters', 'Doctors, tests and agents'],
+  'masters': ['Masters', 'Doctors and tests'],
+  'users': ['User Management', 'Agent accounts and permissions'],
+  'recycle-bin': ['Recycle Bin', 'Deleted prescriptions'],
   'reports': ['Reports', 'Date-wise and monthly summaries'],
   'settings': ['Settings', 'Matching rules for this company'],
 };
@@ -919,22 +949,32 @@ const NAV_ITEMS_ADMIN = [
   { id: 'prescriptions', label: 'Prescriptions', iconName: 'fileText' },
   { id: 'billing', label: 'Billing Dumps', iconName: 'uploadCloud' },
   { id: 'masters', label: 'Masters', iconName: 'database' },
+  { id: 'users', label: 'User Management', iconName: 'key' },
   { id: 'reports', label: 'Reports', iconName: 'barChart' },
   { id: 'settings', label: 'Settings', iconName: 'settings' },
 ];
+function navItemsForAgent() {
+  const items = [
+    { id: 'dashboard', label: 'Dashboard', iconName: 'home' },
+    { id: 'prescriptions', label: 'Prescriptions', iconName: 'fileText' },
+  ];
+  if (state.user.canUploadBilling) items.push({ id: 'billing', label: 'Billing Dumps', iconName: 'uploadCloud' });
+  return items;
+}
+const AGENT_ALLOWED_VIEWS = ['dashboard', 'prescriptions', 'rx-form', 'billing'];
 const NAV_ITEMS_SUPERADMIN = [ { id: 'sa-companies', label: 'Companies', iconName: 'building' } ];
 const NAV_ALIAS = { 'rx-form': 'prescriptions' }; // sub-pages that should still highlight a parent nav item
 
 function renderShellChrome() {
   $('#user-avatar').textContent = (state.user.name || '?').trim().slice(0,1).toUpperCase();
   $('#user-name').textContent = state.user.name;
-  $('#user-role').innerHTML = `<span class="role-tag ${state.user.role}">${state.user.role === 'superadmin' ? 'Super Admin' : 'Admin'}</span>`;
+  $('#user-role').innerHTML = `<span class="role-tag ${state.user.role}">${state.user.role === 'superadmin' ? 'Super Admin' : state.user.role === 'agent' ? 'Agent' : 'Admin'}</span>`;
   renderSideNav();
   renderCompanyChip();
 }
 
 function renderSideNav() {
-  const items = (state.isSuperAdmin && !state.companyId) ? NAV_ITEMS_SUPERADMIN : NAV_ITEMS_ADMIN;
+  const items = (state.isSuperAdmin && !state.companyId) ? NAV_ITEMS_SUPERADMIN : (state.isAgent ? navItemsForAgent() : NAV_ITEMS_ADMIN);
   $('#side-nav').innerHTML = items.map(it => `<div class="nav-item" data-view="${it.id}">${icon(it.iconName)}<span>${it.label}</span></div>`).join('');
   $$('#side-nav .nav-item').forEach(elm => elm.addEventListener('click', () => { navigateTo(elm.dataset.view); closeSidebarMobile(); }));
 }
@@ -953,6 +993,7 @@ function renderCompanyChip() {
 }
 
 async function navigateTo(view, params) {
+  if (state.isAgent && (!AGENT_ALLOWED_VIEWS.includes(view) || (view === 'billing' && !state.user.canUploadBilling))) view = 'dashboard';
   state.viewParams = params || {};
   $$('#side-nav .nav-item').forEach(elm => elm.classList.toggle('active', elm.dataset.view === (NAV_ALIAS[view] || view)));
   const titles = VIEW_TITLES[view] || ['CXDX', ''];
@@ -992,9 +1033,19 @@ async function renderCompaniesListView(content) {
   companies.forEach(c => {
     $('#enter-' + c.id).addEventListener('click', () => enterCompany(c.id));
     $('#manage-' + c.id).addEventListener('click', () => openManageCompanyModal(c.id));
-    getCountFromServer(collection(db, 'companies', c.id, 'prescriptions')).then(res => {
+    getDoc(doc(db, 'companies', c.id, 'meta', 'dashboardSummary')).then(summarySnap => {
       const el = document.getElementById('count-' + c.id);
-      if (el) el.textContent = formatNum(res.data().count) + ' prescription rows';
+      if (!el) return;
+      if (summarySnap.exists()) {
+        const d = summarySnap.data();
+        el.textContent = formatNum((d.testGivenCount || 0) + (d.noTestCount || 0)) + ' prescription rows';
+      } else {
+        // Not bootstrapped yet (no one has opened this company's Dashboard since the summary
+        // feature shipped) — fall back to the original live count just this once.
+        getCountFromServer(collection(db, 'companies', c.id, 'prescriptions')).then(res => {
+          if (el) el.textContent = formatNum(res.data().count) + ' prescription rows';
+        }).catch(() => {});
+      }
     }).catch(() => {});
   });
 }
@@ -1063,6 +1114,15 @@ async function createCompanyAdmin(companyId, name, email, password) {
   return newUid;
 }
 
+async function createCompanyAgent(companyId, name, email, password, canUploadBilling) {
+  const sAuth = getSecondaryAuth();
+  const cred = await createUserWithEmailAndPassword(sAuth, email, password);
+  const newUid = cred.user.uid;
+  await signOut(sAuth);
+  await setDoc(doc(db, 'users', newUid), { name, email, role: 'agent', companyId, canUploadBilling: !!canUploadBilling, createdAt: serverTimestamp() });
+  return newUid;
+}
+
 async function openManageCompanyModal(companyId) {
   openModal(`<div class="modal-head"><h3>Manage Company</h3><button class="icon-btn" id="m-x">${icon('x')}</button></div><div class="modal-body" id="mc-body"><div class="u-center" style="padding:50px 0;"><div class="loader-ring"></div></div></div>`, { wide: true });
   $('#m-x').onclick = closeModal;
@@ -1113,13 +1173,44 @@ async function openManageCompanyModal(companyId) {
     });
   });
   $('#mc-delete').onclick = async () => {
-    const ok = await confirmDialog('Delete this company?', `This permanently deletes "${c.name}" and all of its prescriptions, billing dumps, and master data. This cannot be undone.`, 'Delete Permanently', true);
+    const adminEmails = admins.map(a => a.email).filter(Boolean);
+    const emailWarning = adminEmails.length
+      ? ` Firestore data alone can't revoke a login — the ${adminEmails.length} admin sign-in account${adminEmails.length === 1 ? '' : 's'} (${adminEmails.join(', ')}) will still be able to sign in until removed manually from Firebase Console afterward.`
+      : '';
+    const ok = await confirmDialog('Delete this company?', `This permanently deletes "${c.name}" and all of its prescriptions, billing dumps, and master data. This cannot be undone.${emailWarning}`, 'Delete Permanently', true);
     if (!ok) return;
     closeModal();
     showToast('Deleting company…', 'info');
-    try { await deleteCompanyCascade(companyId); showToast('Company deleted', 'success'); navigateTo('sa-companies'); }
+    try {
+      await deleteCompanyCascade(companyId);
+      if (adminEmails.length) showPostDeleteAuthNotice(c.name, adminEmails);
+      else { showToast('Company deleted', 'success'); navigateTo('sa-companies'); }
+    }
     catch (e) { showToast(friendlyError(e), 'error'); }
   };
+}
+// Firebase Auth accounts belonging to OTHER users can't be deleted from client-side code —
+// only a signed-in user can delete their own account. Deleting other users' accounts requires
+// the Admin SDK on a backend (e.g. a Cloud Function), which this project doesn't have. This
+// notice makes that manual follow-up step impossible to miss instead of a silent gap.
+function showPostDeleteAuthNotice(companyName, emails) {
+  openModal(`
+    <div class="modal-head"><h3>${icon('alertTriangle')} Company Data Deleted</h3></div>
+    <div class="modal-body">
+      <p style="font-size:13.5px;color:var(--slate-600);margin-bottom:14px;">All Firestore data for "${escapeHtml(companyName)}" is gone. Firebase Authentication doesn't allow account deletion from a client app, so ${emails.length === 1 ? 'this sign-in still works' : 'these sign-ins still work'} until removed manually:</p>
+      <div class="mono" style="background:var(--paper-50);border:1px solid var(--line-100);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:16px;font-size:12.5px;line-height:1.8;">${emails.map(e => escapeHtml(e)).join('<br>')}</div>
+      <div class="u-flex u-gap-8" style="flex-wrap:wrap;">
+        <button class="btn btn-secondary btn-sm" id="pd-copy">${icon('download')} Copy Emails</button>
+        <a class="btn btn-secondary btn-sm" href="https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/users" target="_blank" rel="noopener">Open Firebase Console ↗</a>
+      </div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-primary" id="pd-done">Done</button></div>
+  `);
+  $('#pd-copy').onclick = async () => {
+    try { await navigator.clipboard.writeText(emails.join('\n')); showToast('Emails copied', 'success'); }
+    catch (e) { showToast('Could not copy — select the list manually', 'error'); }
+  };
+  $('#pd-done').onclick = () => { closeModal(); navigateTo('sa-companies'); };
 }
 function adminRowHtml(a) {
   return `<div class="u-between" style="padding:10px 0;border-bottom:1px solid var(--line-100);">
@@ -1267,7 +1358,7 @@ async function enterCompany(companyId) {
 }
 function exitCompany() {
   state.companyId = null; state.companyName = ''; state.matchingConfig = null;
-  state.doctors = []; state.tests = []; state.agents = []; state.customFields = [];
+  state.doctors = []; state.tests = []; state.customFields = [];
   invalidatePrescriptionsCache();
   renderShellChrome();
   navigateTo('sa-companies');
@@ -1288,6 +1379,8 @@ async function deleteCompanyCascade(companyId) {
   await deleteAllInCollection(collection(db, 'companies', companyId, 'doctors'));
   await deleteAllInCollection(collection(db, 'companies', companyId, 'tests'));
   await deleteAllInCollection(collection(db, 'companies', companyId, 'agents'));
+  await deleteAllInCollection(collection(db, 'companies', companyId, 'monthlySummaries'));
+  await deleteDoc(doc(db, 'companies', companyId, 'meta', 'dashboardSummary')).catch(() => {});
   const usersSnap = await getDocs(query(collection(db, 'users'), where('companyId', '==', companyId)));
   if (usersSnap.docs.length) { const b = writeBatch(db); usersSnap.docs.forEach(d => b.delete(d.ref)); await b.commit(); }
   await deleteDoc(doc(db, 'companies', companyId));
@@ -1301,19 +1394,54 @@ VIEW_RENDERERS['sa-companies'] = renderCompaniesListView;
 /* ---- SECTION: ADMIN DASHBOARD ---- */
 let dashBarChartInstance = null, dashDonutChartInstance = null;
 
+// Converts a summary-doc's raw counters into the same shape computeSummaryStats() returns, so
+// every consumer (Dashboard, charts, Reports) can treat the fast precomputed path and the
+// full-scan fallback identically.
+function summaryDocToStats(d) {
+  const testGivenCount = d.testGivenCount || 0, matchedCount = d.matchedCount || 0;
+  const prescriptionValue = d.prescriptionValue || 0, conversionValue = d.conversionValue || 0, leakageValue = d.leakageValue || 0;
+  return {
+    totalPrescription: d.visitCount || 0, totalTestGiven: testGivenCount, totalConversion: matchedCount,
+    totalLeakageCount: testGivenCount - matchedCount, totalNoTestCount: d.noTestCount || 0,
+    prescriptionValue, conversionValue, leakageValue,
+    conversionPct: prescriptionValue > 0 ? (conversionValue / prescriptionValue) * 100 : 0,
+    leakagePct: prescriptionValue > 0 ? (leakageValue / prescriptionValue) * 100 : 0,
+  };
+}
+// Dashboard's data source: reads companies/{id}/meta/dashboardSummary (1 read) plus the 6 most
+// recent monthlySummaries docs (up to 6 reads) instead of every prescription document. The very
+// first time a company is viewed after this feature ships there's no summary doc yet — that one
+// visit falls back to a full read (identical to the old behavior) and persists the summary so
+// every subsequent visit is fast. This is the only place that full-read cost is ever paid again.
+async function getDashboardData() {
+  const summarySnap = await getDoc(doc(db, 'companies', state.companyId, 'meta', 'dashboardSummary'));
+  if (summarySnap.exists()) {
+    const stats = summaryDocToStats(summarySnap.data());
+    const monthsSnap = await getDocs(query(collection(db, 'companies', state.companyId, 'monthlySummaries'), orderBy('__name__', 'desc'), fsLimit(6)));
+    const monthly = {};
+    monthsSnap.docs.forEach(d => { monthly[d.id] = summaryDocToStats(d.data()); });
+    return { stats, monthly, rowCount: stats.totalTestGiven + stats.totalNoTestCount };
+  }
+  const rows = await loadAllPrescriptions();
+  const stats = computeSummaryStats(rows);
+  const monthlyFull = groupByMonth(rows);
+  if (rows.length) await reconcileSummaryDocs(state.companyId, rows);
+  const monthly = {};
+  Object.keys(monthlyFull).forEach(mk => { if (mk !== 'unknown') monthly[mk] = monthlyFull[mk]; });
+  return { stats, monthly, rowCount: rows.length };
+}
+
 async function renderDashboardView(content) {
   content.innerHTML = `<div class="u-center" style="padding:100px 0;"><div class="loader-ring"></div></div>`;
   if (!state.companyActive) {
     content.innerHTML = `<div class="empty-state">${icon('alertTriangle')}<h4>Company deactivated</h4><p>This company account is currently inactive. Contact your Super Admin to reactivate it.</p></div>`;
     return;
   }
-  const rows = await loadAllPrescriptions();
-  const stats = computeSummaryStats(rows);
-  const monthly = groupByMonth(rows);
+  const { stats, monthly, rowCount } = await getDashboardData();
 
   content.innerHTML = `
     <div class="view">
-      ${rows.length === 0 ? `<div class="card card-pad" style="margin-bottom:18px;background:var(--teal-50);border-color:var(--teal-100);display:flex;gap:10px;align-items:center;color:var(--teal-700);font-size:13.5px;font-weight:500;">${icon('info')} No prescriptions yet — add your first entry or import historical data to see your conversion overview.</div>` : ''}
+      ${rowCount === 0 ? `<div class="card card-pad" style="margin-bottom:18px;background:var(--teal-50);border-color:var(--teal-100);display:flex;gap:10px;align-items:center;color:var(--teal-700);font-size:13.5px;font-weight:500;">${icon('info')} No prescriptions yet — add your first entry or import historical data to see your conversion overview.</div>` : ''}
       <div class="stat-grid">
         <div class="stat-card accent-ink"><div class="lbl"><span class="stat-icon-badge badge-ink">${icon('fileText')}</span> Total Prescriptions</div><div class="val" id="cu-1">0</div></div>
         <div class="stat-card accent-teal"><div class="lbl"><span class="stat-icon-badge badge-teal">${icon('flask')}</span> Total Test Given</div><div class="val" id="cu-2">0</div></div>
@@ -1343,9 +1471,8 @@ async function renderDashboardView(content) {
         <div class="card-head"><h3>Quick Actions</h3></div>
         <div class="card-pad u-flex u-gap-12" style="flex-wrap:wrap;">
           <button class="btn btn-primary" id="qa-entry">${icon('plusCircle')} New Prescription</button>
-          <button class="btn btn-secondary" id="qa-billing">${icon('uploadCloud')} Upload Billing Dump</button>
-          <button class="btn btn-secondary" id="qa-match">${icon('refresh')} Re-run Matching</button>
-          <button class="btn btn-secondary" id="qa-report">${icon('barChart')} View Reports</button>
+          ${(!state.isAgent || state.user.canUploadBilling) ? `<button class="btn btn-secondary" id="qa-billing">${icon('uploadCloud')} Upload Billing Dump</button>` : ''}
+          ${!state.isAgent ? `<button class="btn btn-secondary" id="qa-match">${icon('refresh')} Re-run Matching</button><button class="btn btn-secondary" id="qa-report">${icon('barChart')} View Reports</button>` : ''}
         </div>
       </div>
     </div>`;
@@ -1361,14 +1488,14 @@ async function renderDashboardView(content) {
   setTimeout(() => { $('#cu-8-bar').style.width = Math.min(100, stats.conversionPct) + '%'; }, 150);
 
   $('#qa-entry').addEventListener('click', () => navigateTo('rx-form'));
-  $('#qa-billing').addEventListener('click', () => navigateTo('billing'));
-  $('#qa-match').addEventListener('click', async () => {
+  if ($('#qa-billing')) $('#qa-billing').addEventListener('click', () => navigateTo('billing'));
+  if ($('#qa-match')) $('#qa-match').addEventListener('click', async () => {
     showToast('Running matching…', 'info');
     const r = await runMatching();
     showToast(`Matching complete — ${r.matchedCount} matched, ${r.leakageCount} leakage`, 'success');
     navigateTo('dashboard');
   });
-  $('#qa-report').addEventListener('click', () => navigateTo('reports'));
+  if ($('#qa-report')) $('#qa-report').addEventListener('click', () => navigateTo('reports'));
 
   renderDashCharts(monthly, stats);
 }
@@ -1411,7 +1538,7 @@ function invalidatePrescriptionsCache() { prescriptionsCache = null; prescriptio
 async function loadAllPrescriptions(forceRefresh) {
   if (!forceRefresh && prescriptionsCache && prescriptionsCacheCompanyId === state.companyId) return prescriptionsCache;
   const snap = await getDocs(query(collection(db, 'companies', state.companyId, 'prescriptions'), orderBy('date', 'desc')));
-  prescriptionsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  prescriptionsCache = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => !r.deleted);
   prescriptionsCacheCompanyId = state.companyId;
   return prescriptionsCache;
 }
@@ -1439,19 +1566,159 @@ function groupByMonth(rows) {
   return map;
 }
 
+/* ---- Precomputed summary accounting (companies/{id}/meta/dashboardSummary + monthlySummaries/{mk}) ----
+   Why: the Dashboard's 8 stat cards and Reports' Monthly Summary tab used to be built by reading
+   EVERY prescription document on every visit — fine at hundreds of rows, expensive at thousands.
+   Instead we maintain running totals that are updated with tiny, targeted increment() writes right
+   alongside each prescription write (no extra reads needed for the common cases below), and are
+   fully recomputed from scratch only during runMatching() — which already reads every prescription
+   anyway, so that reconciliation is free and self-heals any drift from the rarer edge cases noted
+   inline. Reading the summary is then a single small document instead of the whole collection. */
+const SUMMARY_KEYS = ['testGivenCount', 'noTestCount', 'matchedCount', 'prescriptionValue', 'conversionValue', 'leakageValue'];
+function zeroContrib() { const o = {}; SUMMARY_KEYS.forEach(k => o[k] = 0); return o; }
+// A row's contribution to each bucket, based on its CURRENT matchStatus — matches
+// computeSummaryStats' own classification exactly (matchStatus, not testGiven) so a
+// freshly-created row that hasn't been through quickMatchBatch yet is accounted for identically
+// to how the full-scan version already treats it.
+function rowStatContribution(row) {
+  const c = zeroContrib();
+  if (!row) return c;
+  if (row.matchStatus === 'no-test') { c.noTestCount = 1; return c; }
+  const isMatched = row.matchStatus === 'matched';
+  c.testGivenCount = 1;
+  c.matchedCount = isMatched ? 1 : 0;
+  c.prescriptionValue = toNum(row.testAmount);
+  c.conversionValue = isMatched ? toNum(row.matchedAmount) : 0;
+  c.leakageValue = isMatched ? 0 : toNum(row.testAmount);
+  return c;
+}
+function addContribInto(target, c, mult) { SUMMARY_KEYS.forEach(k => target[k] = (target[k] || 0) + c[k] * mult); }
+function isZeroContrib(c) { return SUMMARY_KEYS.every(k => !c[k]); }
+
+// Stages summary-doc deltas into an existing writeBatch for one or more row changes, so the
+// prescription writes and the summary update commit atomically together. `changes` is an array
+// of { oldRow, newRow, visitDelta }: oldRow/newRow may be null for creation/deletion; visitDelta
+// is a caller-supplied +1/-1 for whether this specific change also makes a NEW distinct uhid+date
+// visit appear or the LAST remaining row of one disappear (the row data alone can't tell us that
+// — it depends on whether other rows still share that uhid+date, which is the caller's job to
+// check where it matters). For an edit that moves a row to a different uhid+date AND that change
+// affects visit membership on both ends, pass it as two entries — {oldRow, newRow:null,
+// visitDelta:-1} and {oldRow:null, newRow, visitDelta:1} — so both the origin and destination
+// month/visit get the correct credit/debit; a single combined entry can only attribute the visit
+// delta to one side. Every document this touches is written at most once per call.
+function stageSummaryChanges(batch, companyId, changes) {
+  const totalDelta = zeroContrib();
+  let totalVisitDelta = 0;
+  const monthDeltas = {};
+  function touchMonth(mk) { if (!monthDeltas[mk]) monthDeltas[mk] = { contrib: zeroContrib(), visitDelta: 0 }; return monthDeltas[mk]; }
+
+  (changes || []).forEach(({ oldRow, newRow, visitDelta }) => {
+    visitDelta = visitDelta || 0;
+    const oldC = rowStatContribution(oldRow), newC = rowStatContribution(newRow);
+    const d = zeroContrib(); addContribInto(d, newC, 1); addContribInto(d, oldC, -1);
+    addContribInto(totalDelta, d, 1);
+    totalVisitDelta += visitDelta;
+    const oldMonth = oldRow ? (oldRow.monthKey || monthKeyFromDate(oldRow.date)) : null;
+    const newMonth = newRow ? (newRow.monthKey || monthKeyFromDate(newRow.date)) : null;
+    const visitMonth = newMonth || oldMonth;
+    if (oldMonth === newMonth) {
+      if (newMonth) { const m = touchMonth(newMonth); addContribInto(m.contrib, d, 1); m.visitDelta += visitDelta; }
+    } else {
+      if (oldMonth) { const m = touchMonth(oldMonth); addContribInto(m.contrib, oldC, -1); if (visitMonth === oldMonth) m.visitDelta += visitDelta; }
+      if (newMonth) { const m = touchMonth(newMonth); addContribInto(m.contrib, newC, 1); if (visitMonth === newMonth) m.visitDelta += visitDelta; }
+    }
+  });
+
+  if (totalVisitDelta !== 0 || !isZeroContrib(totalDelta)) {
+    batch.set(doc(db, 'companies', companyId, 'meta', 'dashboardSummary'), {
+      visitCount: increment(totalVisitDelta), testGivenCount: increment(totalDelta.testGivenCount), noTestCount: increment(totalDelta.noTestCount),
+      matchedCount: increment(totalDelta.matchedCount), prescriptionValue: increment(totalDelta.prescriptionValue),
+      conversionValue: increment(totalDelta.conversionValue), leakageValue: increment(totalDelta.leakageValue), updatedAt: serverTimestamp(),
+    }, { merge: true });
+  }
+  Object.keys(monthDeltas).forEach(mk => {
+    const m = monthDeltas[mk];
+    if (m.visitDelta === 0 && isZeroContrib(m.contrib)) return;
+    batch.set(doc(db, 'companies', companyId, 'monthlySummaries', mk), {
+      monthKey: mk, visitCount: increment(m.visitDelta), testGivenCount: increment(m.contrib.testGivenCount), noTestCount: increment(m.contrib.noTestCount),
+      matchedCount: increment(m.contrib.matchedCount), prescriptionValue: increment(m.contrib.prescriptionValue),
+      conversionValue: increment(m.contrib.conversionValue), leakageValue: increment(m.contrib.leakageValue), updatedAt: serverTimestamp(),
+    }, { merge: true });
+  });
+}
+
+// Full, exact recomputation from a complete row set — the reconciliation anchor. Called by
+// runMatching() (which already has every row in memory, so this adds no extra reads) and by the
+// one-time bootstrap the first time a company's Dashboard loads after this feature ships. Uses
+// set() (overwrite), not increment(), and explicitly zeroes out any month that no longer has any
+// rows so a month that's been fully deleted/moved-away-from doesn't leave stale numbers behind.
+async function reconcileSummaryDocs(companyId, rows) {
+  const overall = computeSummaryStats(rows);
+  const monthly = groupByMonth(rows);
+  const existingMonthsSnap = await getDocs(collection(db, 'companies', companyId, 'monthlySummaries'));
+  const staleMonths = existingMonthsSnap.docs.map(d => d.id).filter(mk => !monthly[mk]);
+
+  let batch = writeBatch(db), n = 0;
+  const flush = async () => { if (n > 0) { await batch.commit(); batch = writeBatch(db); n = 0; } };
+
+  batch.set(doc(db, 'companies', companyId, 'meta', 'dashboardSummary'), {
+    visitCount: overall.totalPrescription, testGivenCount: overall.totalTestGiven, noTestCount: overall.totalNoTestCount,
+    matchedCount: overall.totalConversion, prescriptionValue: overall.prescriptionValue,
+    conversionValue: overall.conversionValue, leakageValue: overall.leakageValue,
+    updatedAt: serverTimestamp(), reconciledAt: serverTimestamp(),
+  }, { merge: true });
+  n++;
+
+  for (const mk of Object.keys(monthly)) {
+    if (mk === 'unknown') continue;
+    const s = monthly[mk];
+    batch.set(doc(db, 'companies', companyId, 'monthlySummaries', mk), {
+      monthKey: mk, visitCount: s.totalPrescription, testGivenCount: s.totalTestGiven, noTestCount: s.totalNoTestCount,
+      matchedCount: s.totalConversion, prescriptionValue: s.prescriptionValue, conversionValue: s.conversionValue, leakageValue: s.leakageValue,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+    n++; if (n >= 450) await flush();
+  }
+  for (const mk of staleMonths) {
+    batch.set(doc(db, 'companies', companyId, 'monthlySummaries', mk), {
+      monthKey: mk, visitCount: 0, testGivenCount: 0, noTestCount: 0, matchedCount: 0, prescriptionValue: 0, conversionValue: 0, leakageValue: 0,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+    n++; if (n >= 450) await flush();
+  }
+  await flush();
+  return overall;
+}
+
 let rxPage = 1;
 const RX_PAGE_SIZE = 50;
 let rxFilterStatus = 'all', rxSearchTerm = '', rxDateFrom = '', rxDateTo = '';
+// 'paginated': cheap server-cursor pages, only ever reads the rows actually shown — the default,
+// no-filter view. 'filtered': the full (cached) dataset, filtered client-side exactly as before —
+// switched into the instant any search/filter is used, since Firestore can't do free-text
+// substring search server-side, so that case needs the whole dataset in memory regardless.
+let rxMode = 'paginated';
+let rxCursors = [null];
+let rxServerHasMore = false;
+let rxServerTotalCount = null;
+
+function rxFiltersActive() { return rxFilterStatus !== 'all' || !!rxSearchTerm || !!rxDateFrom || !!rxDateTo; }
 
 async function renderPrescriptionsView(content) {
-  $('#topbar-actions').innerHTML = `
+  $('#topbar-actions').innerHTML = state.isAgent
+    ? `<button class="btn btn-primary" id="rx-new-btn">${icon('plusCircle')} New Prescription</button>`
+    : `
+    <button class="btn btn-secondary" id="rx-recycle-btn">${icon('inbox')} Recycle Bin</button>
     <button class="btn btn-secondary" id="rx-import-btn">${icon('uploadCloud')} Import</button>
     <button class="btn btn-secondary" id="rx-template-btn">${icon('download')} Template</button>
     <button class="btn btn-primary" id="rx-new-btn">${icon('plusCircle')} New Prescription</button>
   `;
   $('#rx-new-btn').addEventListener('click', () => navigateTo('rx-form'));
-  $('#rx-template-btn').addEventListener('click', downloadPrescriptionTemplate);
-  $('#rx-import-btn').addEventListener('click', openBulkImportPrescriptionsModal);
+  if (!state.isAgent) {
+    $('#rx-template-btn').addEventListener('click', downloadPrescriptionTemplate);
+    $('#rx-import-btn').addEventListener('click', openBulkImportPrescriptionsModal);
+    $('#rx-recycle-btn').addEventListener('click', () => navigateTo('recycle-bin'));
+  }
 
   content.innerHTML = `<div class="view">
     <div class="card">
@@ -1491,20 +1758,65 @@ async function renderPrescriptionsView(content) {
   });
 
   rxFilterStatus = 'all'; rxSearchTerm = ''; rxDateFrom = ''; rxDateTo = '';
-  state.prescriptions = await loadAllPrescriptions();
-  rxPage = 1;
-  renderRxTable();
-  $('#rx-search').addEventListener('input', debounce((e) => { rxSearchTerm = e.target.value.trim().toUpperCase(); rxPage = 1; renderRxTable(); }, 250));
+  rxPage = 1; rxCursors = [null]; rxServerHasMore = false; rxServerTotalCount = null;
+
+  if (prescriptionsCache && prescriptionsCacheCompanyId === state.companyId) {
+    // Already fetched elsewhere this session (Dashboard bootstrap, Reports, an earlier search) —
+    // it's free now, so just use it instead of paging from the server.
+    rxMode = 'filtered';
+    state.prescriptions = prescriptionsCache;
+    renderRxTable();
+  } else {
+    rxMode = 'paginated';
+    await loadRxServerPage();
+  }
+
+  $('#rx-search').addEventListener('input', debounce((e) => { rxSearchTerm = e.target.value.trim().toUpperCase(); rxPage = 1; onRxFilterChanged(); }, 250));
   $$('#rx-filter-pills .pill').forEach(p => p.addEventListener('click', () => {
     $$('#rx-filter-pills .pill').forEach(x => x.classList.remove('active')); p.classList.add('active');
-    rxFilterStatus = p.dataset.f; rxPage = 1; renderRxTable();
+    rxFilterStatus = p.dataset.f; rxPage = 1; onRxFilterChanged();
   }));
-  $('#rx-date-from').addEventListener('change', (e) => { rxDateFrom = e.target.value; rxPage = 1; renderRxTable(); });
-  $('#rx-date-to').addEventListener('change', (e) => { rxDateTo = e.target.value; rxPage = 1; renderRxTable(); });
+  $('#rx-date-from').addEventListener('change', (e) => { rxDateFrom = e.target.value; rxPage = 1; onRxFilterChanged(); });
+  $('#rx-date-to').addEventListener('change', (e) => { rxDateTo = e.target.value; rxPage = 1; onRxFilterChanged(); });
   $('#rx-date-clear').addEventListener('click', () => {
     rxDateFrom = ''; rxDateTo = '';
     $('#rx-date-from').value = ''; $('#rx-date-to').value = '';
-    rxPage = 1; renderRxTable();
+    rxPage = 1; onRxFilterChanged();
+  });
+}
+
+async function onRxFilterChanged() {
+  if (rxMode === 'filtered') { renderRxTable(); return; }
+  if (!rxFiltersActive()) return; // still on the default paginated view, nothing to react to
+  // First time search/filter is actually used this visit — load the full dataset once (cached
+  // from then on, including for Dashboard/Reports for the rest of the session).
+  $('#rx-table-wrap').innerHTML = `<div class="u-center" style="padding:60px 0;"><div class="loader-ring"></div></div>`;
+  rxMode = 'filtered';
+  state.prescriptions = await loadAllPrescriptions();
+  renderRxTable();
+}
+
+async function loadRxServerPage() {
+  $('#rx-table-wrap').innerHTML = `<div class="u-center" style="padding:60px 0;"><div class="loader-ring"></div></div>`;
+  $('#rx-pager').innerHTML = '';
+  let q = query(collection(db, 'companies', state.companyId, 'prescriptions'), orderBy('date', 'desc'), fsLimit(RX_PAGE_SIZE + 1));
+  const cursor = rxCursors[rxPage - 1];
+  if (cursor) q = query(q, startAfter(cursor));
+  const [snap, countRes] = await Promise.all([
+    getDocs(q),
+    rxServerTotalCount === null ? getCountFromServer(collection(db, 'companies', state.companyId, 'prescriptions')).catch(() => null) : Promise.resolve(null),
+  ]);
+  if (countRes) rxServerTotalCount = countRes.data().count;
+  const docs = snap.docs;
+  rxServerHasMore = docs.length > RX_PAGE_SIZE;
+  const pageDocs = rxServerHasMore ? docs.slice(0, RX_PAGE_SIZE) : docs;
+  if (pageDocs.length) rxCursors[rxPage] = pageDocs[pageDocs.length - 1];
+  const rows = pageDocs.map(d => ({ id: d.id, ...d.data() })).filter(r => !r.deleted);
+  renderRxTableRows(rows, {
+    countLabel: rxServerTotalCount !== null ? `${rxServerTotalCount} rows · Page ${rxPage}` : `Page ${rxPage}`,
+    hasPrev: rxPage > 1, hasNext: rxServerHasMore,
+    onPrev: () => { rxPage--; loadRxServerPage(); },
+    onNext: () => { rxPage++; loadRxServerPage(); },
   });
 }
 
@@ -1531,25 +1843,34 @@ function getFilteredRx() {
 }
 function renderRxTable() {
   const filtered = getFilteredRx();
+  if (!filtered.length) { renderRxTableRows([], { countLabel: '', hasPrev: false, hasNext: false, onPrev() {}, onNext() {} }); return; }
+  const totalPages = Math.ceil(filtered.length / RX_PAGE_SIZE);
+  rxPage = Math.min(rxPage, totalPages) || 1;
+  const pageRows = filtered.slice((rxPage - 1) * RX_PAGE_SIZE, rxPage * RX_PAGE_SIZE);
+  renderRxTableRows(pageRows, {
+    countLabel: `${filtered.length} rows · Page ${rxPage} of ${totalPages}`,
+    hasPrev: rxPage > 1, hasNext: rxPage < totalPages,
+    onPrev: () => { rxPage--; renderRxTable(); },
+    onNext: () => { rxPage++; renderRxTable(); },
+  });
+}
+function renderRxTableRows(rows, pagerOpts) {
   const wrap = $('#rx-table-wrap');
-  if (!filtered.length) {
+  if (!rows.length) {
     wrap.innerHTML = `<div class="empty-state">${icon('fileText')}<h4>No prescriptions found</h4><p>Try a different search or date range, or add a new prescription entry.</p></div>`;
     $('#rx-pager').innerHTML = '';
     return;
   }
-  const totalPages = Math.ceil(filtered.length / RX_PAGE_SIZE);
-  rxPage = Math.min(rxPage, totalPages) || 1;
-  const pageRows = filtered.slice((rxPage - 1) * RX_PAGE_SIZE, rxPage * RX_PAGE_SIZE);
-  wrap.innerHTML = `<table><thead><tr><th>Date</th><th>UHID</th><th>Patient</th><th>Consultant</th><th>Test Given</th><th class="num">Amount</th><th>Status</th><th class="num">Matched Amt</th><th>Entered By</th>${customFieldsTableHeaderHtml()}<th></th></tr></thead><tbody>${pageRows.map(rxRowHtml).join('')}</tbody></table>`;
-  pageRows.forEach(r => {
+  wrap.innerHTML = `<table><thead><tr><th>Date</th><th>UHID</th><th>Patient</th><th>Consultant</th><th>Test Given</th><th class="num">Amount</th><th>Status</th><th class="num">Matched Amt</th><th>Entered By</th>${customFieldsTableHeaderHtml()}<th></th></tr></thead><tbody>${rows.map(rxRowHtml).join('')}</tbody></table>`;
+  rows.forEach(r => {
+    $('#hist-' + r.id).addEventListener('click', () => openHistoryModal(r));
     $('#edit-' + r.id).addEventListener('click', () => navigateTo('rx-form', { editing: r }));
     $('#del-' + r.id).addEventListener('click', () => deletePrescriptionRow(r.id, r));
   });
-  $('#rx-pager').innerHTML = `<span class="u-muted" style="font-size:12.5px;">${filtered.length} rows · Page ${rxPage} of ${totalPages}</span>
-    <div class="u-flex u-gap-8"><button class="btn btn-ghost btn-sm" id="rx-prev" ${rxPage <= 1 ? 'disabled' : ''}>‹ Prev</button><button class="btn btn-ghost btn-sm" id="rx-next" ${rxPage >= totalPages ? 'disabled' : ''}>Next ›</button></div>`;
-  const prevBtn = $('#rx-prev'), nextBtn = $('#rx-next');
-  if (prevBtn) prevBtn.addEventListener('click', () => { rxPage--; renderRxTable(); });
-  if (nextBtn) nextBtn.addEventListener('click', () => { rxPage++; renderRxTable(); });
+  $('#rx-pager').innerHTML = `<span class="u-muted" style="font-size:12.5px;">${pagerOpts.countLabel}</span>
+    <div class="u-flex u-gap-8"><button class="btn btn-ghost btn-sm" id="rx-prev" ${pagerOpts.hasPrev ? '' : 'disabled'}>‹ Prev</button><button class="btn btn-ghost btn-sm" id="rx-next" ${pagerOpts.hasNext ? '' : 'disabled'}>Next ›</button></div>`;
+  $('#rx-prev').addEventListener('click', pagerOpts.onPrev);
+  $('#rx-next').addEventListener('click', pagerOpts.onNext);
 }
 function rxRowHtml(r) {
   const matched = r.matchStatus === 'matched';
@@ -1558,7 +1879,7 @@ function rxRowHtml(r) {
     <td>${escapeHtml(r.consultant || '—')}</td><td>${escapeHtml(r.testGiven)}</td><td class="num">${formatMoney(r.testAmount)}</td>
     <td>${statusBadgeHtml(r)}</td>
     <td class="num">${matched ? formatMoney(r.matchedAmount) : '—'}</td><td>${escapeHtml(r.enteredBy || '—')}</td>${customFieldsTableCellsHtml(r)}
-    <td><div class="u-flex u-gap-8"><button class="icon-btn" id="edit-${r.id}">${icon('edit')}</button><button class="icon-btn danger" id="del-${r.id}">${icon('trash')}</button></div></td>
+    <td><div class="u-flex u-gap-8"><button class="icon-btn" id="hist-${r.id}" title="History">${icon('info')}</button><button class="icon-btn" id="edit-${r.id}">${icon('edit')}</button><button class="icon-btn danger" id="del-${r.id}">${icon('trash')}</button></div></td>
   </tr>`;
 }
 
@@ -1665,8 +1986,33 @@ function slugifyFieldKey(label, existingFields) {
 }
 
 function doctorSearchOptions() { return state.doctors.map(d => ({ value: d.name, label: d.name + (d.specialization ? ' — ' + d.specialization : '') })); }
-function agentSearchOptions() { return state.agents.map(a => ({ value: a.name, label: a.name })); }
 function testSearchOptions() { return [{ value: NO_TEST_LABEL, label: NO_TEST_LABEL }].concat(state.tests.map(t => ({ value: t.name, label: t.name, amount: t.amount }))); }
+
+// A short, fixed list of user-editable prescription fields the history log tracks by name —
+// deliberately not a generic deep-diff engine (custom fields are flagged as changed but not
+// itemized), which is what keeps this simple rather than a full structural diff.
+const RX_AUDIT_FIELDS = [
+  { key: 'date', label: 'Date' }, { key: 'uhid', label: 'UHID' }, { key: 'patientName', label: 'Patient Name' },
+  { key: 'consultant', label: 'Consultant' }, { key: 'testGiven', label: 'Test Given' }, { key: 'testAmount', label: 'Test Amount' },
+  { key: 'consultationFollowUp', label: 'Consultation Follow Up' }, { key: 'testFollowUp', label: 'Test Follow Up' }, { key: 'remarks', label: 'Remarks' },
+];
+function computeFieldChanges(oldRow, newRow) {
+  const changes = [];
+  RX_AUDIT_FIELDS.forEach(f => {
+    const from = oldRow[f.key], to = newRow[f.key];
+    const fromStr = (from === undefined || from === null) ? '' : String(from);
+    const toStr = (to === undefined || to === null) ? '' : String(to);
+    if (fromStr !== toStr) changes.push({ field: f.key, label: f.label, from: fromStr, to: toStr });
+  });
+  if (JSON.stringify(oldRow.custom || {}) !== JSON.stringify(newRow.custom || {})) changes.push({ field: 'custom', label: 'Additional Details', from: '', to: '' });
+  return changes;
+}
+// Stages one append-only audit-log entry under a prescription's history subcollection, in the
+// same batch as the prescription write itself. ref may be a DocumentReference (existing/new
+// prescription) — history is nested under it.
+function stageHistoryEntry(batch, ref, entry) {
+  batch.set(doc(collection(ref, 'history')), Object.assign({ at: serverTimestamp() }, entry));
+}
 
 async function renderPrescriptionFormView(content, params) {
   const existing = params && params.editing;
@@ -1684,7 +2030,7 @@ async function renderPrescriptionFormView(content, params) {
           <div class="field-wrap"><label>UHID <span class="req">*</span></label><input type="text" id="rx-uhid" class="uhid-input" placeholder="e.g. UH20458" value="${existing ? escapeHtml(existing.uhid) : ''}"><span class="hint">No spaces, auto-capitalized</span></div>
           <div class="field-wrap span-2"><label>Patient Name <span class="req">*</span></label><input type="text" id="rx-patient" value="${existing ? escapeHtml(existing.patientName) : ''}"></div>
           <div class="field-wrap"><label>Consultant</label><div class="search-select" id="rx-consultant"></div></div>
-          <div class="field-wrap"><label>Entered By</label><div class="search-select" id="rx-entered-by"></div></div>
+          <div class="field-wrap"><label>Entered By</label><input type="text" id="rx-entered-by-display" value="${escapeHtml(existing ? (existing.enteredBy || '') : (state.user.name || ''))}" disabled><span class="hint">${existing ? 'Set when this prescription was first entered' : 'Auto-filled from your account'}</span></div>
         </div>
       </div>
 
@@ -1727,7 +2073,6 @@ async function renderPrescriptionFormView(content, params) {
   $('#rxp-cancel').addEventListener('click', () => navigateTo('prescriptions'));
   bindUhidNormalize($('#rx-uhid'));
   const consultantSelect = initSearchSelect('rx-consultant', doctorSearchOptions(), existing ? existing.consultant : '');
-  const enteredBySelect = initSearchSelect('rx-entered-by', agentSearchOptions(), existing ? existing.enteredBy : '');
   let testSingleSelect = null;
 
   if (!isEdit) {
@@ -1757,7 +2102,7 @@ async function renderPrescriptionFormView(content, params) {
     const date = $('#rx-date').value;
     const uhidVal = normalizeUHID($('#rx-uhid').value);
     const patientName = $('#rx-patient').value.trim();
-    const consultant = consultantSelect.getValue(), enteredBy = enteredBySelect.getValue();
+    const consultant = consultantSelect.getValue();
     const cfu = $('#rx-cfu').value, tfu = $('#rx-tfu').value, remarks = $('#rx-remarks').value.trim();
     if (!date || !uhidVal || !patientName) { showToast('Date, UHID, and Patient Name are required', 'error'); return; }
     const custom = collectCustomFieldValues();
@@ -1769,7 +2114,35 @@ async function renderPrescriptionFormView(content, params) {
       if (isEdit) {
         const testGiven = testSingleSelect.getValue(), testAmount = toNum($('#rx-amount-single').value);
         const ref = doc(db, 'companies', state.companyId, 'prescriptions', existing.id);
-        await updateDoc(ref, { date, uhid: uhidVal, patientName, consultant, enteredBy, consultationFollowUp: cfu, testFollowUp: tfu, remarks, testGiven, testAmount, monthKey: monthKeyFromDate(date), custom });
+        const oldRow = existing; // already the current persisted state — it's what populated this form
+        // enteredBy is set once at creation and never changes on edit — it's "who originally
+        // entered this". Who most recently touched it is tracked separately below.
+        const enteredBy = existing.enteredBy;
+        const newRow = { ...existing, date, uhid: uhidVal, patientName, consultant, enteredBy, consultationFollowUp: cfu, testFollowUp: tfu, remarks, testGiven, testAmount, monthKey: monthKeyFromDate(date), custom };
+        const visitKeyChanged = oldRow.uhid !== uhidVal || oldRow.date !== date;
+        let summaryChanges;
+        if (!visitKeyChanged) {
+          summaryChanges = [{ oldRow, newRow }];
+        } else {
+          // uhid/date changed — check (cheap, count-only) whether this empties the old visit or
+          // lands on an already-existing one, so the distinct-visit counter stays accurate.
+          const [oldSiblings, newSiblings] = await Promise.all([
+            getCountFromServer(query(collection(db, 'companies', state.companyId, 'prescriptions'), where('uhid', '==', oldRow.uhid), where('date', '==', oldRow.date))),
+            getCountFromServer(query(collection(db, 'companies', state.companyId, 'prescriptions'), where('uhid', '==', uhidVal), where('date', '==', date))),
+          ]);
+          const oldVisitEmptied = oldSiblings.data().count <= 1;
+          const newVisitIsNew = newSiblings.data().count === 0;
+          summaryChanges = [
+            { oldRow, newRow: null, visitDelta: oldVisitEmptied ? -1 : 0 },
+            { oldRow: null, newRow, visitDelta: newVisitIsNew ? 1 : 0 },
+          ];
+        }
+        const editBatch = writeBatch(db);
+        editBatch.update(ref, { date, uhid: uhidVal, patientName, consultant, enteredBy, consultationFollowUp: cfu, testFollowUp: tfu, remarks, testGiven, testAmount, monthKey: monthKeyFromDate(date), custom, lastModifiedByUid: state.user.uid, lastModifiedByName: state.user.name, lastModifiedAt: serverTimestamp() });
+        stageSummaryChanges(editBatch, state.companyId, summaryChanges);
+        const fieldChanges = computeFieldChanges(oldRow, newRow);
+        if (fieldChanges.length) stageHistoryEntry(editBatch, ref, { action: 'edited', byUid: state.user.uid, byName: state.user.name, changes: fieldChanges });
+        await editBatch.commit();
         savedRefs = [ref];
         showToast('Prescription updated', 'success');
       } else {
@@ -1779,11 +2152,16 @@ async function renderPrescriptionFormView(content, params) {
           const testGiven = rowEl._testSelect ? rowEl._testSelect.getValue() : NO_TEST_LABEL;
           const testAmount = toNum(rowEl.querySelector('.tr-amount').value);
           if (!testGiven) continue;
-          docs.push({ date, uhid: uhidVal, patientName, consultant, enteredBy, consultationFollowUp: cfu, testFollowUp: tfu, remarks, testGiven, testAmount, monthKey: monthKeyFromDate(date), custom, matchStatus: 'leakage', matchedAmount: 0, matchedBillingRef: null, createdAt: serverTimestamp() });
+          docs.push({ date, uhid: uhidVal, patientName, consultant, enteredBy: state.user.name, enteredByUid: state.user.uid, consultationFollowUp: cfu, testFollowUp: tfu, remarks, testGiven, testAmount, monthKey: monthKeyFromDate(date), custom, matchStatus: 'leakage', matchedAmount: 0, matchedBillingRef: null, createdAt: serverTimestamp() });
         }
         if (!docs.length) { showToast('Select at least one test', 'error'); setBtnLoading(btn, false, `${icon('check')} Save Prescription`); return; }
         const batch = writeBatch(db);
-        savedRefs = docs.map(d => { const ref = doc(collection(db, 'companies', state.companyId, 'prescriptions')); batch.set(ref, d); return ref; });
+        savedRefs = docs.map(d => { const ref = doc(collection(db, 'companies', state.companyId, 'prescriptions')); batch.set(ref, d); stageHistoryEntry(batch, ref, { action: 'created', byUid: state.user.uid, byName: state.user.name }); return ref; });
+        // All rows share the same date/uhid (one visit) — a single visitDelta on the first entry
+        // covers the whole visit; this is the common "new visit" case and doesn't need a read to
+        // know it's new (a self-correcting approximation if the same uhid+date already existed
+        // from a separate earlier entry — reconciled automatically next time Run Matching runs).
+        stageSummaryChanges(batch, state.companyId, docs.map((d, i) => i === 0 ? { oldRow: null, newRow: d, visitDelta: 1 } : { oldRow: null, newRow: d }));
         await batch.commit();
         showToast(`${docs.length} prescription row(s) saved`, 'success');
       }
@@ -1833,10 +2211,65 @@ function addTestRow() {
 }
 
 async function deletePrescriptionRow(id, row) {
-  const ok = await confirmDialog('Delete this prescription row?', `${row.patientName} — ${row.testGiven} (${formatDateDisplay(row.date)}) will be permanently removed.`, 'Delete', true);
+  const isSoft = state.isAgent; // agents can't truly delete — enforced by firestore.rules too, not just this UI check
+  const ok = await confirmDialog(
+    'Delete this prescription row?',
+    isSoft
+      ? `${row.patientName} — ${row.testGiven} (${formatDateDisplay(row.date)}) will be moved to the Recycle Bin. Your admin can restore it or remove it permanently.`
+      : `${row.patientName} — ${row.testGiven} (${formatDateDisplay(row.date)}) will be permanently removed.`,
+    'Delete', true
+  );
   if (!ok) return;
-  try { await deleteDoc(doc(db, 'companies', state.companyId, 'prescriptions', id)); invalidatePrescriptionsCache(); showToast('Deleted', 'success'); navigateTo('prescriptions'); }
+  try {
+    const siblingCount = await getCountFromServer(query(collection(db, 'companies', state.companyId, 'prescriptions'), where('uhid', '==', row.uhid), where('date', '==', row.date)));
+    const isLastOfVisit = siblingCount.data().count <= 1;
+    const ref = doc(db, 'companies', state.companyId, 'prescriptions', id);
+    const batch = writeBatch(db);
+    if (isSoft) {
+      batch.update(ref, { deleted: true, deletedAt: serverTimestamp(), deletedByUid: state.user.uid, deletedByName: state.user.name });
+      stageHistoryEntry(batch, ref, { action: 'deleted', byUid: state.user.uid, byName: state.user.name });
+    } else {
+      batch.delete(ref);
+    }
+    // Soft- and hard-deleted rows both stop counting toward the live totals immediately.
+    stageSummaryChanges(batch, state.companyId, [{ oldRow: row, newRow: null, visitDelta: isLastOfVisit ? -1 : 0 }]);
+    await batch.commit();
+    invalidatePrescriptionsCache();
+    showToast(isSoft ? 'Moved to Recycle Bin' : 'Deleted', 'success');
+    navigateTo('prescriptions');
+  }
   catch (e) { showToast(friendlyError(e), 'error'); }
+}
+
+// Simple, read-only audit trail viewer for one prescription: who created it, who edited it and
+// what changed, who deleted/restored it, and when — pulled from its history subcollection.
+async function openHistoryModal(row) {
+  openModal(`
+    <div class="modal-head"><h3>${icon('info')} Prescription History</h3><button class="icon-btn" id="m-x">${icon('x')}</button></div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--slate-500);margin-bottom:14px;">${escapeHtml(row.patientName)} — ${escapeHtml(row.testGiven)} · ${escapeHtml(row.uhid)} · ${formatDateDisplay(row.date)}</p>
+      <div id="hist-timeline"><div class="u-center" style="padding:30px 0;"><div class="loader-ring"></div></div></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-ghost" id="m-cancel">Close</button></div>
+  `, { wide: true });
+  $('#m-x').onclick = closeModal; $('#m-cancel').onclick = closeModal;
+  try {
+    const snap = await getDocs(query(collection(db, 'companies', state.companyId, 'prescriptions', row.id, 'history'), orderBy('at', 'desc')));
+    const entries = snap.docs.map(d => d.data());
+    $('#hist-timeline').innerHTML = entries.length ? entries.map(historyEntryHtml).join('') : `<p class="u-muted" style="font-size:13px;">No history recorded yet.</p>`;
+  } catch (e) {
+    $('#hist-timeline').innerHTML = `<p class="u-muted" style="font-size:13px;">Couldn't load history.</p>`;
+  }
+}
+function historyEntryHtml(e) {
+  const when = e.at && e.at.toDate ? e.at.toDate().toLocaleString() : '—';
+  const actionLabel = { created: 'Created', edited: 'Edited', deleted: 'Deleted', restored: 'Restored' }[e.action] || e.action;
+  const actionIcon = { created: 'plusCircle', edited: 'edit', deleted: 'trash', restored: 'refresh' }[e.action] || 'info';
+  const changesHtml = (e.changes || []).map(c => `<div style="font-size:12px;color:var(--slate-500);padding-left:4px;">${escapeHtml(c.label)}: <span class="mono">${escapeHtml(c.from) || '—'}</span> → <span class="mono">${escapeHtml(c.to) || '—'}</span></div>`).join('');
+  return `<div style="padding:12px 0;border-bottom:1px solid var(--line-100);">
+    <div class="u-flex u-gap-8" style="align-items:center;"><span style="color:var(--teal-600);">${icon(actionIcon)}</span><b style="font-size:13.5px;">${actionLabel}</b><span class="u-muted" style="font-size:12px;">by ${escapeHtml(e.byName || 'Unknown')} · ${when}</span></div>
+    ${changesHtml ? `<div style="margin-top:6px;">${changesHtml}</div>` : ''}
+  </div>`;
 }
 
 function downloadPrescriptionTemplate() {
@@ -1958,12 +2391,30 @@ function buildPrescriptionImportRow(r, map) {
 }
 async function bulkImportPrescriptions(rows) {
   let batch = writeBatch(db), n = 0;
+  const seenVisits = new Set();
+  const summaryChanges = [];
   for (const r of rows) {
-    batch.set(doc(collection(db, 'companies', state.companyId, 'prescriptions')), Object.assign({}, r, { monthKey: monthKeyFromDate(r.date), matchStatus: 'leakage', matchedAmount: 0, matchedBillingRef: null, createdAt: serverTimestamp() }));
+    const withDefaults = Object.assign({}, r, { monthKey: monthKeyFromDate(r.date), matchStatus: 'leakage', matchedAmount: 0, matchedBillingRef: null, createdAt: serverTimestamp() });
+    batch.set(doc(collection(db, 'companies', state.companyId, 'prescriptions')), withDefaults);
     n++;
     if (n === 450) { await batch.commit(); batch = writeBatch(db); n = 0; }
+    // Dedupe distinct visits WITHIN this import batch (cheap, no reads). This can't see visits
+    // that already existed before the import, so it's a same-tradeoff approximation as new-visit
+    // saves — self-corrects on the next Run Matching, which the import UI already prompts for.
+    const visitKey = (r.uhid || '') + '|' + (r.date || '');
+    const isNewInBatch = !seenVisits.has(visitKey);
+    seenVisits.add(visitKey);
+    summaryChanges.push({ oldRow: null, newRow: withDefaults, visitDelta: isNewInBatch ? 1 : 0 });
   }
   if (n > 0) await batch.commit();
+  // Summary deltas are staged as their own batch(es), aggregated across the whole import, kept
+  // separate from the prescription-write chunks above so an import spanning many distinct months
+  // (many monthlySummaries docs touched) can never risk exceeding the 500-operation batch limit.
+  for (let i = 0; i < summaryChanges.length; i += 450) {
+    const summaryBatch = writeBatch(db);
+    stageSummaryChanges(summaryBatch, state.companyId, summaryChanges.slice(i, i + 450));
+    await summaryBatch.commit();
+  }
   invalidatePrescriptionsCache();
 }
 
@@ -1974,14 +2425,12 @@ VIEW_RENDERERS['rx-form'] = renderPrescriptionFormView;
 let mastersActiveTab = 'doctors';
 
 async function loadMasters() {
-  const [dSnap, tSnap, aSnap] = await Promise.all([
+  const [dSnap, tSnap] = await Promise.all([
     getDocs(collection(db, 'companies', state.companyId, 'doctors')),
     getDocs(collection(db, 'companies', state.companyId, 'tests')),
-    getDocs(collection(db, 'companies', state.companyId, 'agents')),
   ]);
   state.doctors = dSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   state.tests = tSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  state.agents = aSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 }
 
 async function renderMastersView(content) {
@@ -2111,6 +2560,147 @@ async function importMasterRows(type, rows) {
 
 VIEW_RENDERERS['masters'] = renderMastersView;
 
+/* ---- SECTION: USER MANAGEMENT (Agent accounts) ---- */
+async function renderUserManagementView(content) {
+  $('#topbar-actions').innerHTML = `<button class="btn btn-primary" id="um-add">${icon('plusCircle')} Add Agent</button>`;
+  content.innerHTML = `<div class="view">
+    <div class="card card-pad" style="margin-bottom:18px;background:var(--teal-50);border-color:var(--teal-100);color:var(--teal-700);font-size:13px;display:flex;gap:10px;align-items:center;">
+      ${icon('info')} Agents can enter and edit prescriptions. Turn on Billing Access below for any agent who should also be able to upload monthly billing dumps — everything else stays Admin-only.
+    </div>
+    <div class="card"><div class="table-wrap" id="um-list"><div class="u-center" style="padding:50px 0;"><div class="loader-ring"></div></div></div></div>
+  </div>`;
+  $('#um-add').addEventListener('click', () => openAgentFormModal());
+  await loadAndRenderAgents();
+}
+async function loadAndRenderAgents() {
+  const snap = await getDocs(query(collection(db, 'users'), where('companyId', '==', state.companyId), where('role', '==', 'agent')));
+  const agentsList = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  $('#um-list').innerHTML = agentsList.length
+    ? `<table><thead><tr><th>Name</th><th>Email</th><th>Billing Access</th><th></th></tr></thead><tbody>${agentsList.map(agentRowHtml).join('')}</tbody></table>`
+    : `<div class="empty-state">${icon('key')}<h4>No agents yet</h4><p>Add an agent so they can sign in and enter prescriptions.</p></div>`;
+  agentsList.forEach(a => {
+    $('#edit-agent-' + a.id).addEventListener('click', () => openAgentFormModal(a));
+    $('#reset-agent-' + a.id).addEventListener('click', async () => {
+      try { await sendPasswordResetEmail(auth, a.email); showToast('Password reset email sent to ' + a.email, 'success'); }
+      catch (e) { showToast(friendlyError(e), 'error'); }
+    });
+    $('#remove-agent-' + a.id).addEventListener('click', async () => {
+      const ok = await confirmDialog('Remove this agent?', `${a.name} (${a.email}) will no longer be able to sign in to CXDX. This cannot be undone from here.`, 'Remove', true);
+      if (!ok) return;
+      try {
+        await deleteDoc(doc(db, 'users', a.id));
+        showToast('Agent removed. Their Firebase Auth sign-in still exists — remove it from the Console if needed.', 'success');
+        loadAndRenderAgents();
+      } catch (e) { showToast(friendlyError(e), 'error'); }
+    });
+  });
+}
+function agentRowHtml(a) {
+  return `<tr><td>${escapeHtml(a.name)}</td><td>${escapeHtml(a.email)}</td><td>${a.canUploadBilling ? `<span class="badge matched">${icon('check')} Allowed</span>` : `<span class="badge neutral">Not allowed</span>`}</td>
+    <td style="text-align:right;white-space:nowrap;">
+      <button class="icon-btn" id="edit-agent-${a.id}" title="Edit">${icon('edit')}</button>
+      <button class="icon-btn" id="reset-agent-${a.id}" title="Reset Password">${icon('key')}</button>
+      <button class="icon-btn" id="remove-agent-${a.id}" title="Remove">${icon('trash')}</button>
+    </td></tr>`;
+}
+function openAgentFormModal(existing) {
+  const isEdit = !!existing;
+  openModal(`
+    <div class="modal-head"><h3>${isEdit ? 'Edit Agent' : 'Add Agent'}</h3><button class="icon-btn" id="m-x">${icon('x')}</button></div>
+    <div class="modal-body">
+      <div class="field-wrap" style="margin-bottom:14px;"><label>Full Name</label><input type="text" id="ag-name" value="${isEdit ? escapeHtml(existing.name) : ''}"></div>
+      <div class="field-wrap" style="margin-bottom:14px;"><label>Email</label><input type="email" id="ag-email" value="${isEdit ? escapeHtml(existing.email) : ''}" ${isEdit ? 'disabled' : ''}>${isEdit ? '<span class="hint">Email can’t be changed after the account is created</span>' : ''}</div>
+      ${isEdit ? '' : `<div class="field-wrap" style="margin-bottom:14px;"><label>Temporary Password</label><input type="text" id="ag-pass" placeholder="Min 6 characters"></div>`}
+      <label class="checkbox-row"><input type="checkbox" id="ag-billing" ${isEdit && existing.canUploadBilling ? 'checked' : ''}> Allow this agent to upload billing dumps</label>
+    </div>
+    <div class="modal-foot"><button class="btn btn-ghost" id="m-cancel">Cancel</button><button class="btn btn-primary" id="ag-save">${icon(isEdit ? 'check' : 'plus')} ${isEdit ? 'Save Changes' : 'Add Agent'}</button></div>
+  `);
+  $('#m-x').onclick = closeModal; $('#m-cancel').onclick = closeModal;
+  $('#ag-save').onclick = async () => {
+    const name = $('#ag-name').value.trim();
+    const email = $('#ag-email').value.trim();
+    const canUploadBilling = $('#ag-billing').checked;
+    const saveLabel = `${icon(isEdit ? 'check' : 'plus')} ${isEdit ? 'Save Changes' : 'Add Agent'}`;
+    if (!name || !email) { showToast('Name and email are required', 'error'); return; }
+    if (!validateEmail(email)) { showToast('Email looks invalid', 'error'); return; }
+    const btn = $('#ag-save'); setBtnLoading(btn, true);
+    try {
+      if (isEdit) {
+        await updateDoc(doc(db, 'users', existing.id), { name, canUploadBilling });
+        showToast('Agent updated', 'success');
+      } else {
+        const pass = $('#ag-pass').value;
+        if (pass.length < 6) { showToast('Password must be at least 6 characters', 'error'); setBtnLoading(btn, false, saveLabel); return; }
+        await createCompanyAgent(state.companyId, name, email, pass, canUploadBilling);
+        showToast('Agent added', 'success');
+      }
+      closeModal();
+      loadAndRenderAgents();
+    } catch (err) { showToast(friendlyError(err), 'error'); setBtnLoading(btn, false, saveLabel); }
+  };
+}
+VIEW_RENDERERS['users'] = renderUserManagementView;
+
+/* ---- SECTION: RECYCLE BIN (soft-deleted prescriptions, Admin/Super Admin only) ---- */
+async function renderRecycleBinView(content) {
+  content.innerHTML = `<div class="view"><div class="card"><div class="table-wrap" id="rb-list"><div class="u-center" style="padding:50px 0;"><div class="loader-ring"></div></div></div></div></div>`;
+  await loadAndRenderRecycleBin();
+}
+async function loadAndRenderRecycleBin() {
+  const snap = await getDocs(query(collection(db, 'companies', state.companyId, 'prescriptions'), where('deleted', '==', true)));
+  const rows = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => {
+    const at = a.deletedAt && a.deletedAt.toDate ? a.deletedAt.toDate().getTime() : 0;
+    const bt = b.deletedAt && b.deletedAt.toDate ? b.deletedAt.toDate().getTime() : 0;
+    return bt - at;
+  });
+  $('#rb-list').innerHTML = rows.length
+    ? `<table><thead><tr><th>Date</th><th>UHID</th><th>Patient</th><th>Test Given</th><th class="num">Amount</th><th>Deleted By</th><th>Deleted On</th><th></th></tr></thead><tbody>${rows.map(rbRowHtml).join('')}</tbody></table>`
+    : `<div class="empty-state">${icon('inbox')}<h4>Recycle Bin is empty</h4><p>Prescriptions deleted by an agent will appear here for review.</p></div>`;
+  rows.forEach(r => {
+    $('#restore-' + r.id).addEventListener('click', () => restorePrescription(r));
+    $('#purge-' + r.id).addEventListener('click', () => purgePrescription(r));
+  });
+}
+function rbRowHtml(r) {
+  const deletedOn = r.deletedAt && r.deletedAt.toDate ? formatDateDisplay(r.deletedAt.toDate().toISOString().slice(0, 10)) : '—';
+  return `<tr><td>${formatDateDisplay(r.date)}</td><td class="uhid-cell">${escapeHtml(r.uhid)}</td><td>${escapeHtml(r.patientName)}</td><td>${escapeHtml(r.testGiven)}</td><td class="num">${formatMoney(r.testAmount)}</td><td>${escapeHtml(r.deletedByName || '—')}</td><td>${deletedOn}</td>
+    <td style="text-align:right;white-space:nowrap;"><button class="btn btn-ghost btn-sm" id="restore-${r.id}">${icon('refresh')} Restore</button> <button class="icon-btn" id="purge-${r.id}" title="Delete Permanently">${icon('trash')}</button></td></tr>`;
+}
+async function restorePrescription(row) {
+  const ok = await confirmDialog('Restore this prescription?', `${row.patientName} — ${row.testGiven} will be restored and re-matched against current billing data.`, 'Restore', false);
+  if (!ok) return;
+  try {
+    const ref = doc(db, 'companies', state.companyId, 'prescriptions', row.id);
+    // Counts every doc sharing this uhid+date, including this one (still deleted at query time).
+    // If it's the only one, restoring clearly reintroduces the visit; if others already exist
+    // they might themselves be active or also deleted — a rare, cheap-to-miss edge case that
+    // self-corrects on the next Run Matching, same convention used throughout the app.
+    const siblingCount = await getCountFromServer(query(collection(db, 'companies', state.companyId, 'prescriptions'), where('uhid', '==', row.uhid), where('date', '==', row.date)));
+    const restoredRow = { ...row, deleted: false, deletedAt: null, deletedByUid: null, deletedByName: null };
+    const batch = writeBatch(db);
+    batch.update(ref, { deleted: false, deletedAt: null, deletedByUid: null, deletedByName: null });
+    stageSummaryChanges(batch, state.companyId, [{ oldRow: null, newRow: restoredRow, visitDelta: siblingCount.data().count <= 1 ? 1 : 0 }]);
+    stageHistoryEntry(batch, ref, { action: 'restored', byUid: state.user.uid, byName: state.user.name });
+    await batch.commit();
+    await quickMatchBatch([ref]); // re-evaluate against current billing data rather than staying frozen at its pre-deletion status
+    invalidatePrescriptionsCache();
+    showToast('Restored', 'success');
+    loadAndRenderRecycleBin();
+  } catch (e) { showToast(friendlyError(e), 'error'); }
+}
+async function purgePrescription(row) {
+  const ok = await confirmDialog('Permanently delete this prescription?', `${row.patientName} — ${row.testGiven} will be permanently removed. This cannot be undone.`, 'Delete Permanently', true);
+  if (!ok) return;
+  try {
+    // Already excluded from every stat since it was soft-deleted — purging doesn't touch the
+    // summary again (that would double-count the removal).
+    await deleteDoc(doc(db, 'companies', state.companyId, 'prescriptions', row.id));
+    showToast('Permanently deleted', 'success');
+    loadAndRenderRecycleBin();
+  } catch (e) { showToast(friendlyError(e), 'error'); }
+}
+VIEW_RENDERERS['recycle-bin'] = renderRecycleBinView;
+
 /* ---- SECTION: BILLING DUMP + MATCHING ---- */
 function readFileAsRows(file) {
   return new Promise((resolve, reject) => {
@@ -2142,14 +2732,16 @@ function detectColumnMapping(headers, savedMap) {
 }
 
 async function renderBillingView(content) {
-  $('#topbar-actions').innerHTML = `<button class="btn btn-secondary" id="bv-run-match">${icon('refresh')} Run Matching</button><button class="btn btn-primary" id="bv-upload">${icon('uploadCloud')} Upload Billing Dump</button>`;
+  $('#topbar-actions').innerHTML = state.isAgent
+    ? `<button class="btn btn-primary" id="bv-upload">${icon('uploadCloud')} Upload Billing Dump</button>`
+    : `<button class="btn btn-secondary" id="bv-run-match">${icon('refresh')} Run Matching</button><button class="btn btn-primary" id="bv-upload">${icon('uploadCloud')} Upload Billing Dump</button>`;
   $('#bv-upload').addEventListener('click', () => openBillingUploadModal());
-  $('#bv-run-match').addEventListener('click', async () => {
-    const btn = $('#bv-run-match'); setBtnLoading(btn, true);
+  if ($('#bv-run-match')) $('#bv-run-match').addEventListener('click', async () => {
+    const btn = $('#bv-run-match'); setRunMatchingBtnLoading(btn, true);
     showToast('Running matching — this can take a moment for large datasets…', 'info');
     try { const r = await runMatching(); showToast(`Matching complete — ${r.matchedCount} matched, ${r.leakageCount} leakage`, 'success'); }
     catch (err) { showToast(friendlyError(err), 'error'); }
-    setBtnLoading(btn, false, `${icon('refresh')} Run Matching`);
+    setRunMatchingBtnLoading(btn, false, `${icon('refresh')} Run Matching`);
   });
   content.innerHTML = `<div class="view"><div id="bv-list"><div class="u-center" style="padding:60px 0;"><div class="loader-ring"></div></div></div></div>`;
   const snap = await getDocs(query(collection(db, 'companies', state.companyId, 'billingDumps'), orderBy('monthKey', 'desc')));
@@ -2161,14 +2753,13 @@ async function renderBillingView(content) {
       <div><div class="m-name">${monthLabel(d.monthKey)}</div><div class="m-meta">${formatNum(d.rowCount || 0)} rows · uploaded ${d.uploadedAt && d.uploadedAt.toDate ? formatDateDisplay(d.uploadedAt.toDate().toISOString().slice(0, 10)) : 'just now'}</div></div>
       <div class="u-flex u-gap-8">
         <button class="btn btn-ghost btn-sm" id="bv-view-${d.id}">${icon('eye')} View</button>
-        <button class="btn btn-ghost btn-sm" id="bv-replace-${d.id}">${icon('refresh')} Replace</button>
-        <button class="btn btn-danger btn-sm" id="bv-delete-${d.id}">${icon('trash')} Delete</button>
+        ${state.isAgent ? '' : `<button class="btn btn-ghost btn-sm" id="bv-replace-${d.id}">${icon('refresh')} Replace</button><button class="btn btn-danger btn-sm" id="bv-delete-${d.id}">${icon('trash')} Delete</button>`}
       </div>
     </div>`).join('');
   dumps.forEach(d => {
     $('#bv-view-' + d.id).addEventListener('click', () => viewBillingDumpRows(d.id));
-    $('#bv-replace-' + d.id).addEventListener('click', () => openBillingUploadModal(d.id));
-    $('#bv-delete-' + d.id).addEventListener('click', () => deleteBillingDump(d.id));
+    if ($('#bv-replace-' + d.id)) $('#bv-replace-' + d.id).addEventListener('click', () => openBillingUploadModal(d.id));
+    if ($('#bv-delete-' + d.id)) $('#bv-delete-' + d.id).addEventListener('click', () => deleteBillingDump(d.id));
   });
 }
 
@@ -2327,7 +2918,7 @@ async function runMatching(companyId, windowDaysOverride) {
     getDocs(collection(db, 'companies', companyId, 'prescriptions')),
     getDocs(collection(db, 'companies', companyId, 'billingDumps')),
   ]);
-  const prescriptions = prescSnap.docs.map(d => ({ id: d.id, ref: d.ref, ...d.data() }));
+  const prescriptions = prescSnap.docs.map(d => ({ id: d.id, ref: d.ref, ...d.data() })).filter(p => !p.deleted);
   let billingRows = [];
   for (const dDoc of dumpsSnap.docs) {
     const rowsSnap = await getDocs(collection(db, 'companies', companyId, 'billingDumps', dDoc.id, 'rows'));
@@ -2360,6 +2951,8 @@ async function runMatching(companyId, windowDaysOverride) {
 
   const matchedCount = prescUpdates.filter(u => u.data.matchStatus === 'matched').length;
   const noTestCount = prescUpdates.filter(u => u.data.matchStatus === 'no-test').length;
+  const finalRows = sortedPresc.map((p, i) => ({ ...p, matchStatus: prescUpdates[i].data.matchStatus, matchedAmount: prescUpdates[i].data.matchedAmount }));
+  await reconcileSummaryDocs(companyId, finalRows);
   if (companyId === state.companyId) invalidatePrescriptionsCache();
   return { matchedCount, leakageCount: prescUpdates.length - matchedCount - noTestCount, noTestCount, total: prescUpdates.length };
 }
@@ -2386,7 +2979,7 @@ async function quickMatchBatch(prescriptionRefs) {
   const prescUpdates = [];
 
   for (const p of prescDocs.slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''))) {
-    if (p.testGiven === NO_TEST_LABEL) { prescUpdates.push({ ref: p.ref, data: { matchStatus: 'no-test', matchedAmount: 0, matchedBillingRef: null } }); continue; }
+    if (p.testGiven === NO_TEST_LABEL) { prescUpdates.push({ ref: p.ref, oldRow: p, data: { matchStatus: 'no-test', matchedAmount: 0, matchedBillingRef: null } }); continue; }
     const startMonth = monthKeyFromDate(p.date);
     const endMonth = isUnlimited ? monthKeys[monthKeys.length - 1] || startMonth : monthKeyFromDate(addDaysISO(p.date, windowDays));
     const relevantMonths = monthKeys.filter(mk => mk >= startMonth && mk <= endMonth);
@@ -2397,7 +2990,7 @@ async function quickMatchBatch(prescriptionRefs) {
       rowsSnap.docs.forEach(d => { const row = { id: d.id, ref: d.ref, ...d.data() }; if (!row.used) candidates.push(row); });
     }
     const decision = decideMatch(p, candidates, usedInBatch, windowDays);
-    prescUpdates.push({ ref: p.ref, data: { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef, consumedRef: decision.consumedRef } });
+    prescUpdates.push({ ref: p.ref, oldRow: p, data: { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef, consumedRef: decision.consumedRef } });
   }
 
   const batch = writeBatch(db);
@@ -2405,6 +2998,9 @@ async function quickMatchBatch(prescriptionRefs) {
     batch.update(u.ref, { matchStatus: u.data.matchStatus, matchedAmount: u.data.matchedAmount, matchedBillingRef: u.data.matchedBillingRef });
     if (u.data.consumedRef) batch.update(u.data.consumedRef, { used: true });
   });
+  // Matching only ever changes matchStatus/matchedAmount on rows that already exist at a fixed
+  // uhid+date — it never touches which visit a row belongs to, so no visitDelta is needed here.
+  stageSummaryChanges(batch, state.companyId, prescUpdates.map(u => ({ oldRow: u.oldRow, newRow: { ...u.oldRow, matchStatus: u.data.matchStatus, matchedAmount: u.data.matchedAmount } })));
   await batch.commit();
   invalidatePrescriptionsCache();
 }
@@ -2419,7 +3015,7 @@ async function renderReportsView(content) {
   content.innerHTML = `<div class="view">
     <div class="card" style="margin-bottom:18px;">
       <div class="table-toolbar">
-        <div class="u-flex u-gap-8" style="align-items:center;flex-wrap:wrap;">
+        <div class="u-flex u-gap-8" style="align-items:center;flex-wrap:wrap;flex-basis:100%;width:100%;">
           <span class="u-muted" style="font-size:12px;font-weight:600;">Date range:</span>
           <input type="date" id="rp-date-from" style="max-width:160px;" title="From date">
           <span class="u-muted" style="font-size:12px;">to</span>
@@ -2434,26 +3030,75 @@ async function renderReportsView(content) {
     </div>
     <div id="rp-body"><div class="u-center" style="padding:60px 0;"><div class="loader-ring"></div></div></div>
   </div>`;
-  const allRows = await loadAllPrescriptions();
+
   let rpTab = 'summary';
-  let rows = allRows, monthly = groupByMonth(rows), overall = computeSummaryStats(rows);
-  function applyDateFilter() {
-    rows = (!rpDateFrom && !rpDateTo) ? allRows : allRows.filter(r => (!rpDateFrom || r.date >= rpDateFrom) && (!rpDateTo || r.date <= rpDateTo));
-    state.prescriptions = rows;
-    monthly = groupByMonth(rows);
-    overall = computeSummaryStats(rows);
+  // Both caches are scoped to the CURRENT filter state and cleared whenever it changes, so
+  // switching tabs back and forth or re-exporting never re-fetches anything already in hand.
+  let cachedRows = null, cachedMonthly = null, cachedOverall = null;
+  const filterActive = () => !!(rpDateFrom || rpDateTo);
+  function invalidateReportCaches() { cachedRows = null; cachedMonthly = null; cachedOverall = null; }
+
+  // Row-level data is only fetched when a tab that actually needs it (Date-wise, or Export) is
+  // used. With no date filter it reuses the shared prescriptions cache (free after first fetch
+  // anywhere in the app this session); with a filter set it queries only that date range instead
+  // of the whole collection.
+  async function getReportRows() {
+    if (cachedRows) return cachedRows;
+    if (filterActive()) {
+      const q = query(collection(db, 'companies', state.companyId, 'prescriptions'),
+        where('date', '>=', rpDateFrom || '0000-00-00'), where('date', '<=', rpDateTo || '9999-99-99'));
+      const snap = await getDocs(q);
+      cachedRows = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => !r.deleted);
+    } else {
+      cachedRows = await loadAllPrescriptions();
+    }
+    state.prescriptions = cachedRows;
+    return cachedRows;
   }
-  function renderBody() { if (rpTab === 'summary') renderMonthlySummaryTable(monthly, overall); else renderDateWiseTable(rows); }
-  renderBody();
+  // Monthly Summary's data: with no filter, read the precomputed totals (1 + a few reads instead
+  // of every prescription). A sub-month date range can't be represented by whole-month precomputed
+  // docs, so a filter falls back to computing from the (already range-scoped, so still cheap) rows.
+  async function getReportMonthlyAndOverall() {
+    if (cachedMonthly) return { monthly: cachedMonthly, overall: cachedOverall };
+    if (!filterActive()) {
+      const summarySnap = await getDoc(doc(db, 'companies', state.companyId, 'meta', 'dashboardSummary'));
+      if (summarySnap.exists()) {
+        const monthsSnap = await getDocs(collection(db, 'companies', state.companyId, 'monthlySummaries'));
+        cachedOverall = summaryDocToStats(summarySnap.data());
+        cachedMonthly = {};
+        monthsSnap.docs.forEach(d => { cachedMonthly[d.id] = summaryDocToStats(d.data()); });
+        return { monthly: cachedMonthly, overall: cachedOverall };
+      }
+    }
+    const rows = await getReportRows();
+    cachedMonthly = groupByMonth(rows);
+    cachedOverall = computeSummaryStats(rows);
+    return { monthly: cachedMonthly, overall: cachedOverall };
+  }
+
+  async function renderBody() {
+    $('#rp-body').innerHTML = `<div class="u-center" style="padding:60px 0;"><div class="loader-ring"></div></div>`;
+    if (rpTab === 'summary') { const { monthly, overall } = await getReportMonthlyAndOverall(); renderMonthlySummaryTable(monthly, overall); }
+    else { const rows = await getReportRows(); renderDateWiseTable(rows); }
+  }
+  await renderBody();
   $$('#rp-tabs .pill').forEach(p => p.addEventListener('click', () => { $$('#rp-tabs .pill').forEach(x => x.classList.remove('active')); p.classList.add('active'); rpTab = p.dataset.t; renderBody(); }));
-  $('#rp-date-from').addEventListener('change', (e) => { rpDateFrom = e.target.value; applyDateFilter(); renderBody(); });
-  $('#rp-date-to').addEventListener('change', (e) => { rpDateTo = e.target.value; applyDateFilter(); renderBody(); });
+  $('#rp-date-from').addEventListener('change', (e) => { rpDateFrom = e.target.value; invalidateReportCaches(); renderBody(); });
+  $('#rp-date-to').addEventListener('change', (e) => { rpDateTo = e.target.value; invalidateReportCaches(); renderBody(); });
   $('#rp-date-clear').addEventListener('click', () => {
     rpDateFrom = ''; rpDateTo = '';
     $('#rp-date-from').value = ''; $('#rp-date-to').value = '';
-    applyDateFilter(); renderBody();
+    invalidateReportCaches(); renderBody();
   });
-  $('#rp-export').addEventListener('click', () => exportReportsExcel(monthly, overall, rows));
+  $('#rp-export').addEventListener('click', async () => {
+    const btn = $('#rp-export'); const label = btn.innerHTML; setBtnLoading(btn, true);
+    try {
+      const { monthly, overall } = await getReportMonthlyAndOverall();
+      const rows = await getReportRows();
+      exportReportsExcel(monthly, overall, rows);
+    } catch (e) { showToast(friendlyError(e), 'error'); }
+    setBtnLoading(btn, false, label);
+  });
 }
 
 function renderMonthlySummaryTable(monthly, overall) {
