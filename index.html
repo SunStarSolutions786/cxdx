@@ -404,6 +404,8 @@ tr.total-row{position:sticky;bottom:0;}
 .empty-state svg{width:46px;height:46px;color:var(--slate-300);margin:0 auto 14px;}
 .empty-state h4{font-family:var(--font-display);font-size:15.5px;color:var(--ink-900);margin-bottom:5px;}
 .empty-state p{font-size:13px;max-width:340px;margin:0 auto;}
+/* Highlight rows in billing upload preview whose date couldn't be parsed */
+.unparsed-row td{background:var(--red-100);color:var(--red-600);} 
 
 /* ============================================================
    MODAL / TOAST / OVERLAY
@@ -782,7 +784,7 @@ function parseFlexibleDate(value) {
 }
 function isoFromParts(y, m, d) { if(!y||!m||!d) return null; return y + '-' + String(m).padStart(2,'0') + '-' + String(d).padStart(2,'0'); }
 function isValidISODate(v) { return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v); }
-function isoToExcelDate(iso) { if (!isValidISODate(iso)) return iso || ''; const [y, m, d] = iso.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); }
+// Removed unused helper `isoToExcelDate` — dates are handled via other helpers.
 
 function animateCountUp(el, target, opts) {
   const isMoney = opts && opts.money, isPct = opts && opts.pct;
@@ -1787,12 +1789,10 @@ async function renderPrescriptionsView(content) {
     : `
     <button class="btn btn-secondary" id="rx-recycle-btn">${icon('inbox')} Recycle Bin</button>
     <button class="btn btn-secondary" id="rx-import-btn">${icon('uploadCloud')} Import</button>
-    <button class="btn btn-secondary" id="rx-template-btn">${icon('download')} Template</button>
     <button class="btn btn-primary" id="rx-new-btn">${icon('plusCircle')} New Prescription</button>
   `;
   $('#rx-new-btn').addEventListener('click', () => navigateTo('rx-form'));
   if (!state.isAgent) {
-    $('#rx-template-btn').addEventListener('click', downloadPrescriptionTemplate);
     $('#rx-import-btn').addEventListener('click', openBulkImportPrescriptionsModal);
     $('#rx-recycle-btn').addEventListener('click', () => navigateTo('recycle-bin'));
   }
@@ -2683,9 +2683,6 @@ VIEW_RENDERERS['masters'] = renderMastersView;
 async function renderUserManagementView(content) {
   $('#topbar-actions').innerHTML = `<button class="btn btn-primary" id="um-add">${icon('plusCircle')} Add Agent</button>`;
   content.innerHTML = `<div class="view">
-    <div class="card card-pad" style="margin-bottom:18px;background:var(--teal-50);border-color:var(--teal-100);color:var(--teal-700);font-size:13px;display:flex;gap:10px;align-items:center;">
-      <span class="banner-icon">${icon('info')}</span> Agents can enter and edit prescriptions. Turn on Billing Access below for any agent who should also be able to upload monthly billing dumps — everything else stays Admin-only.
-    </div>
     <div class="card"><div class="table-wrap" id="um-list"><div class="u-center" style="padding:50px 0;"><div class="loader-ring"></div></div></div></div>
   </div>`;
   $('#um-add').addEventListener('click', () => openAgentFormModal());
@@ -2914,6 +2911,8 @@ function openBillingUploadModal(replaceMonthKey) {
   $('#bu-drop').onclick = () => $('#bu-file').click();
 
   let fileRows = [];
+  let previewDateFix = null; // e.g. 'swapDM'
+  let previewSkipUnparsed = false;
   $('#bu-file').addEventListener('change', async (e) => {
     const file = e.target.files[0]; if (!file) return;
     $('#bu-fname').textContent = file.name;
@@ -2934,18 +2933,51 @@ function openBillingUploadModal(replaceMonthKey) {
       <div class="map-row"><div class="field-name"><span class="req-dot"></span>Amount</div><span class="arrow">${icon('chevronRight')}</span><select id="map-amount">${optionsHtml(guess.amount)}</select></div>
       <div class="map-row"><div class="field-name"><span class="req-dot"></span>Test Name</div><span class="arrow">${icon('chevronRight')}</span><select id="map-testName">${optionsHtml(guess.testName)}</select></div>
       <div class="map-row"><div class="field-name">Patient Name <span class="hint">(optional)</span></div><span class="arrow">${icon('chevronRight')}</span><select id="map-patientName">${optionsHtml(guess.patientName)}</select></div>
+      <div class="divider"></div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px;">
+        <div style="font-weight:600;color:var(--slate-600);font-size:13px;">Auto-suggest fixes:</div>
+        <button class="btn btn-ghost btn-sm" id="bu-fix-swap">Try swap D/M</button>
+        <button class="btn btn-ghost btn-sm" id="bu-fix-reset">Reset fixes</button>
+        <label style="margin-left:12px;display:flex;align-items:center;gap:8px;" title="Allow upload but skip rows with unparsed dates"><input type="checkbox" id="bu-skip-unparsed"> Skip unparsed rows (override)</label>
+      </div>
     `;
     ['uhid', 'date', 'amount', 'testName', 'patientName'].forEach(k => $('#map-' + k).addEventListener('change', updatePreview));
+    $('#bu-fix-swap').addEventListener('click', (e) => { previewDateFix = 'swapDM'; updatePreview(); });
+    $('#bu-fix-reset').addEventListener('click', (e) => { previewDateFix = null; $('#bu-skip-unparsed').checked = false; previewSkipUnparsed = false; updatePreview(); });
+    $('#bu-skip-unparsed').addEventListener('change', (e) => { previewSkipUnparsed = e.target.checked; updatePreview(); });
     updatePreview();
+  }
+  function parseWithFix(raw) {
+    if (raw === null || raw === undefined || raw === '') return null;
+    if (!previewDateFix) return parseFlexibleDate(raw);
+    const s = String(raw).trim();
+    if (previewDateFix === 'swapDM') {
+      const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+      if (m) return parseFlexibleDate(m[2] + '-' + m[1] + '-' + m[3]);
+    }
+    return parseFlexibleDate(raw);
   }
   function currentMap() { return { uhid: $('#map-uhid').value, date: $('#map-date').value, amount: $('#map-amount').value, testName: $('#map-testName').value, patientName: $('#map-patientName').value }; }
   function updatePreview() {
     const map = currentMap();
     const ok = map.uhid && map.date && map.amount && map.testName;
-    $('#bu-confirm').disabled = !ok;
-    if (!ok) { $('#bu-preview-zone').innerHTML = `<p class="u-muted" style="font-size:12.5px;margin-top:10px;">Map UHID, Date, Amount, and Test Name to continue — matching relies on all four.</p>`; return; }
-    const previewRows = fileRows.slice(0, 5).map(r => ({ uhid: normalizeUHID(r[map.uhid]), date: parseFlexibleDate(r[map.date]), amount: toNum(r[map.amount]), testName: map.testName ? r[map.testName] : '' }));
-    $('#bu-preview-zone').innerHTML = `<div class="divider"></div><span class="section-label">Preview (first 5 of ${fileRows.length} rows)</span><div class="table-wrap"><table><thead><tr><th>UHID</th><th>Date</th><th class="num">Amount</th><th>Test Name</th></tr></thead><tbody>${previewRows.map(r => `<tr><td class="uhid-cell">${escapeHtml(r.uhid) || '—'}</td><td>${r.date ? formatDateDisplay(r.date) : '<span style="color:var(--red-600);">unparsed</span>'}</td><td class="num">${formatMoney(r.amount)}</td><td>${escapeHtml(r.testName || '—')}</td></tr>`).join('')}</tbody></table></div>`;
+    if (!ok) {
+      $('#bu-confirm').disabled = true;
+      $('#bu-preview-zone').innerHTML = `<p class="u-muted" style="font-size:12.5px;margin-top:10px;">Map UHID, Date, Amount, and Test Name to continue — matching relies on all four.</p>`;
+      return;
+    }
+    // Build parsed preview using current suggested fix and check entire file for unparsed dates
+    const parsedAll = fileRows.map(r => ({ uhid: normalizeUHID(r[map.uhid]), date: parseWithFix(r[map.date]), amount: toNum(r[map.amount]), testName: map.testName ? r[map.testName] : '' }));
+    const unparsedCount = parsedAll.filter(r => !r.date).length;
+    const previewRows = parsedAll.slice(0, 5);
+    const blocked = (unparsedCount > 0) && !previewSkipUnparsed;
+    $('#bu-confirm').disabled = blocked;
+    let banner = '';
+    if (unparsedCount > 0) {
+      if (previewSkipUnparsed) banner = `<div style="padding:10px;margin-bottom:10px;border-radius:8px;background:var(--amber-100);color:var(--amber-600);font-weight:700;">${unparsedCount} row${unparsedCount>1?'s':''} will be skipped on upload (override enabled).</div>`;
+      else banner = `<div style="padding:10px;margin-bottom:10px;border-radius:8px;background:var(--red-100);color:var(--red-600);font-weight:700;">${unparsedCount} row${unparsedCount>1?'s':''} have unparsed dates — fix your file, try a suggested fix, or enable Skip unparsed rows.</div>`;
+    }
+    $('#bu-preview-zone').innerHTML = `${banner}<div class="divider"></div><span class="section-label">Preview (first 5 of ${fileRows.length} rows)</span><div class="table-wrap"><table><thead><tr><th>UHID</th><th>Date</th><th class="num">Amount</th><th>Test Name</th></tr></thead><tbody>${previewRows.map(r => `<tr${r.date ? '' : ' class="unparsed-row"'}><td class="uhid-cell">${escapeHtml(r.uhid) || '—'}</td><td>${r.date ? formatDateDisplay(r.date) : '<span style="color:var(--red-600);">unparsed</span>'}</td><td class="num">${formatMoney(r.amount)}</td><td>${escapeHtml(r.testName || '—')}</td></tr>`).join('')}</tbody></table></div>`;
   }
 
   $('#bu-confirm').onclick = async () => {
@@ -2962,7 +2994,7 @@ function openBillingUploadModal(replaceMonthKey) {
     }
     const btn = $('#bu-confirm'); setBtnLoading(btn, true);
     try {
-      await uploadBillingDump(monthKey, fileRows, map);
+      await uploadBillingDump(monthKey, fileRows, map, { skipUnparsed: previewSkipUnparsed, dateFix: previewDateFix });
       closeModal();
       showToast('Billing dump uploaded. Upload any other months first, then run matching once from the Dashboard — this keeps Firebase usage down.', 'success');
       navigateTo('billing');
@@ -2970,13 +3002,21 @@ function openBillingUploadModal(replaceMonthKey) {
   };
 }
 
-async function uploadBillingDump(monthKey, fileRows, map) {
+async function uploadBillingDump(monthKey, fileRows, map, opts) {
+  opts = opts || {};
+  const skipUnparsed = !!opts.skipUnparsed;
+  const dateFix = opts.dateFix || null;
   await deleteAllInCollection(collection(db, 'companies', state.companyId, 'billingDumps', monthKey, 'rows'));
-  let batch = writeBatch(db), n = 0, count = 0;
+  let batch = writeBatch(db), n = 0, count = 0, skipped = 0;
   for (const r of fileRows) {
     const uhidVal = normalizeUHID(r[map.uhid]);
-    const dateVal = parseFlexibleDate(r[map.date]);
-    if (!uhidVal || !dateVal) continue;
+    let dateVal = parseFlexibleDate(r[map.date]);
+    if (!dateVal && dateFix === 'swapDM') {
+      const s = String(r[map.date] || '').trim();
+      const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+      if (m) dateVal = parseFlexibleDate(m[2] + '-' + m[1] + '-' + m[3]);
+    }
+    if (!uhidVal || !dateVal) { if (skipUnparsed) { skipped++; continue; } else continue; }
     const rowData = { uhid: uhidVal, date: dateVal, amount: toNum(r[map.amount]), testName: map.testName ? (r[map.testName] || '').toString().trim() : '', patientName: map.patientName ? (r[map.patientName] || '').toString().trim() : '', used: false };
     batch.set(doc(collection(db, 'companies', state.companyId, 'billingDumps', monthKey, 'rows')), rowData);
     n++; count++;
@@ -2987,6 +3027,7 @@ async function uploadBillingDump(monthKey, fileRows, map) {
   const newConfig = Object.assign({}, state.matchingConfig, { billingMap: map });
   await updateDoc(doc(db, 'companies', state.companyId), { matchingConfig: newConfig });
   state.matchingConfig = newConfig;
+  if (skipped > 0) showToast(`${skipped} row${skipped>1?'s':''} were skipped because dates could not be parsed`, 'info');
 }
 
 async function deleteBillingDump(monthKey) {
@@ -3053,8 +3094,27 @@ async function runMatching(companyId, windowDaysOverride) {
   const sortedPresc = prescriptions.slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
   for (const p of sortedPresc) {
-    const decision = decideMatch(p, byUhid[p.uhid] || [], usedBillingIds, windowDays);
-    prescUpdates.push({ ref: p.ref, data: { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef } });
+    // If this prescription contains multiple tests, run matching for each test separately
+    const candidatesForUhid = byUhid[p.uhid] || [];
+    if (Array.isArray(p.tests) && p.tests.length) {
+      const updatedTests = [];
+      let totalMatched = 0;
+      let anyLeak = false, allMatched = true, allNoTest = true;
+      for (const t of p.tests) {
+        const pForTest = Object.assign({}, p, { testGiven: t.testGiven, testAmount: t.testAmount });
+        const decision = decideMatch(pForTest, candidatesForUhid, usedBillingIds, windowDays);
+        updatedTests.push(Object.assign({}, t, { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef }));
+        totalMatched += decision.matchedAmount || 0;
+        if (decision.matchStatus !== 'matched') allMatched = false;
+        if (decision.matchStatus !== 'no-test') allNoTest = false;
+        if (decision.matchStatus === 'leakage') anyLeak = true;
+      }
+      const aggStatus = allMatched ? 'matched' : (allNoTest ? 'no-test' : (anyLeak ? 'leakage' : 'leakage'));
+      prescUpdates.push({ ref: p.ref, oldRow: p, data: { tests: updatedTests, matchStatus: aggStatus, matchedAmount: totalMatched } });
+    } else {
+      const decision = decideMatch(p, candidatesForUhid, usedBillingIds, windowDays);
+      prescUpdates.push({ ref: p.ref, oldRow: p, data: { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef } });
+    }
   }
 
   let batch = writeBatch(db), n = 0;
@@ -3098,7 +3158,6 @@ async function quickMatchBatch(prescriptionRefs) {
   const prescUpdates = [];
 
   for (const p of prescDocs.slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''))) {
-    if (p.testGiven === NO_TEST_LABEL) { prescUpdates.push({ ref: p.ref, oldRow: p, data: { matchStatus: 'no-test', matchedAmount: 0, matchedBillingRef: null } }); continue; }
     const startMonth = monthKeyFromDate(p.date);
     const endMonth = isUnlimited ? monthKeys[monthKeys.length - 1] || startMonth : monthKeyFromDate(addDaysISO(p.date, windowDays));
     const relevantMonths = monthKeys.filter(mk => mk >= startMonth && mk <= endMonth);
@@ -3108,8 +3167,28 @@ async function quickMatchBatch(prescriptionRefs) {
       const rowsSnap = await getDocs(qy);
       rowsSnap.docs.forEach(d => { const row = { id: d.id, ref: d.ref, ...d.data() }; if (!row.used) candidates.push(row); });
     }
-    const decision = decideMatch(p, candidates, usedInBatch, windowDays);
-    prescUpdates.push({ ref: p.ref, oldRow: p, data: { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef, consumedRef: decision.consumedRef } });
+    // If this prescription contains multiple tests, match per-test
+    if (Array.isArray(p.tests) && p.tests.length) {
+      const updatedTests = [];
+      let totalMatched = 0; let anyLeak = false, allMatched = true, allNoTest = true;
+      for (const t of p.tests) {
+        if (t.testGiven === NO_TEST_LABEL) { updatedTests.push(Object.assign({}, t, { matchStatus: 'no-test', matchedAmount: 0, matchedBillingRef: null })); allMatched = false; continue; }
+        const pForTest = Object.assign({}, p, { testGiven: t.testGiven, testAmount: t.testAmount });
+        const decision = decideMatch(pForTest, candidates, usedInBatch, windowDays);
+        updatedTests.push(Object.assign({}, t, { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef }));
+        totalMatched += decision.matchedAmount || 0;
+        if (decision.matchStatus !== 'matched') allMatched = false;
+        if (decision.matchStatus !== 'no-test') allNoTest = false;
+        if (decision.matchStatus === 'leakage') anyLeak = true;
+      }
+      const aggStatus = allMatched ? 'matched' : (allNoTest ? 'no-test' : (anyLeak ? 'leakage' : 'leakage'));
+      prescUpdates.push({ ref: p.ref, oldRow: p, data: { tests: updatedTests, matchStatus: aggStatus, matchedAmount: totalMatched } });
+    } else {
+      // legacy single-test row path
+      if (p.testGiven === NO_TEST_LABEL) { prescUpdates.push({ ref: p.ref, oldRow: p, data: { matchStatus: 'no-test', matchedAmount: 0, matchedBillingRef: null } }); continue; }
+      const decision = decideMatch(p, candidates, usedInBatch, windowDays);
+      prescUpdates.push({ ref: p.ref, oldRow: p, data: { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef, consumedRef: decision.consumedRef } });
+    }
   }
 
   const batch = writeBatch(db);
