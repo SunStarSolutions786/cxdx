@@ -3253,8 +3253,16 @@ function renderDateWiseTable(rows) {
   draw();
 }
 function dwRowHtml(r) {
-  const matched = r.matchStatus === 'matched', noTest = r.matchStatus === 'no-test';
-  return `<tr><td>${formatDateDisplay(r.date)}</td><td class="uhid-cell">${escapeHtml(r.uhid)}</td><td>${escapeHtml(r.patientName)}</td><td>${escapeHtml(r.consultant || '—')}</td><td>${escapeHtml(r.testGiven)}</td><td class="num">${formatMoney(r.testAmount)}</td><td>${statusBadgeHtml(r)}</td><td class="num">${matched ? formatMoney(r.matchedAmount) : '—'}</td><td class="num">${matched || noTest ? '—' : formatMoney(r.testAmount)}</td><td>${escapeHtml(r.enteredBy || '—')}</td>${customFieldsTableCellsHtml(r)}</tr>`;
+  // Support both legacy single-test rows and the normalized `tests` array shape.
+  const tests = Array.isArray(r.tests) && r.tests.length ? r.tests : (r.testGiven !== undefined ? [{ testGiven: r.testGiven, testAmount: r.testAmount, matchStatus: r.matchStatus, matchedAmount: r.matchedAmount }] : []);
+  const testsText = tests.map(t => `${t.testGiven || '—'}${t.testAmount ? ' (' + formatMoney(t.testAmount) + ')' : ''}`).join('<br>');
+  const totalAmt = tests.reduce((s, t) => s + toNum(t.testAmount), 0);
+  const totalMatched = tests.reduce((s, t) => s + (t.matchStatus === 'matched' ? toNum(t.matchedAmount) : 0), 0);
+  const anyLeak = tests.some(t => t.matchStatus === 'leakage');
+  const allNoTest = tests.length > 0 && tests.every(t => t.testGiven === NO_TEST_LABEL || t.matchStatus === 'no-test');
+  const allMatched = tests.length > 0 && tests.every(t => t.matchStatus === 'matched');
+  const pseudoRow = { matchStatus: allMatched ? 'matched' : allNoTest ? 'no-test' : (anyLeak ? 'leakage' : 'leakage') };
+  return `<tr><td>${formatDateDisplay(r.date)}</td><td class="uhid-cell">${escapeHtml(r.uhid)}</td><td>${escapeHtml(r.patientName)}</td><td>${escapeHtml(r.consultant || '—')}</td><td>${testsText}</td><td class="num">${formatMoney(totalAmt)}</td><td>${statusBadgeHtml(pseudoRow)}</td><td class="num">${totalMatched > 0 ? formatMoney(totalMatched) : '—'}</td><td class="num">${pseudoRow.matchStatus === 'matched' || pseudoRow.matchStatus === 'no-test' ? '—' : formatMoney(totalAmt)}</td><td>${escapeHtml(r.enteredBy || '—')}</td>${customFieldsTableCellsHtml(r)}</tr>`;
 }
 
 // Converts a Firestore Timestamp (the prescription's createdAt) into a real JS Date for Excel export, or '' if absent.
@@ -3270,11 +3278,22 @@ function exportReportsExcel(monthly, overall, rows) {
   // Column order: ... Remarks, Entered On (auto date+time), [custom fields], Entered By (last)
   const dwHeaders = ['Date', 'UHID', 'Patient Name', 'Consultant', 'Test Given', 'Test Amount', 'Status', 'Matched Amount', 'Leakage Amount', 'Remarks', 'Entered On'].concat(customFieldsTemplateHeaders()).concat(['Entered By']);
   const enteredOnColIdx = 10;
-  const dateWiseAoa = [
-    dwHeaders,
-    // Write the prescription `date` as an ISO string (YYYY-MM-DD) to avoid timezone shifts
-    ...rows.map(r => [(r.date || ''), r.uhid, r.patientName, r.consultant || '', r.testGiven, toNum(r.testAmount), statusLabel(r), r.matchStatus === 'matched' ? toNum(r.matchedAmount) : 0, r.matchStatus === 'leakage' ? toNum(r.testAmount) : 0, r.remarks || '', tsToExcelDateTime(r.createdAt)].concat(customFieldsExportValues(r)).concat([r.enteredBy || ''])),
-  ];
+  // Flatten each prescription into one or more export rows: one row per test in the visit.
+  const dateWiseAoa = [dwHeaders].concat(rows.flatMap(r => {
+    const base = [(r.date || ''), r.uhid, r.patientName, r.consultant || ''];
+    const tests = Array.isArray(r.tests) && r.tests.length ? r.tests : (r.testGiven !== undefined ? [{ testGiven: r.testGiven, testAmount: r.testAmount, matchStatus: r.matchStatus, matchedAmount: r.matchedAmount }] : [{ testGiven: NO_TEST_LABEL, testAmount: 0, matchStatus: 'no-test', matchedAmount: 0 }]);
+    const customVals = customFieldsExportValues(r);
+    const enteredOn = tsToExcelDateTime(r.createdAt);
+    const enteredBy = r.enteredBy || '';
+    return tests.map(t => {
+      const testName = t.testGiven || '';
+      const testAmount = toNum(t.testAmount);
+      const matchedAmt = t.matchStatus === 'matched' ? toNum(t.matchedAmount) : 0;
+      const leakageAmt = (t.matchStatus === 'matched' || t.matchStatus === 'no-test') ? 0 : toNum(t.testAmount);
+      const status = statusLabel({ matchStatus: t.matchStatus });
+      return base.concat([testName, testAmount, status, matchedAmt, leakageAmt, r.remarks || '', enteredOn]).concat(customVals).concat([enteredBy]);
+    });
+  }));
   const wb = XLSX.utils.book_new();
   const ws1 = XLSX.utils.aoa_to_sheet(summaryAoa); ws1['!cols'] = summaryAoa[0].map(() => ({ wch: 19 }));
   const ws2 = XLSX.utils.aoa_to_sheet(dateWiseAoa);
