@@ -316,6 +316,9 @@ nav.side-nav{flex:1;padding:6px 12px;overflow-y:auto;}
 .form-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;}
 .form-grid.cols-3{grid-template-columns:repeat(3,1fr);}
 .field-wrap{display:flex;flex-direction:column;gap:6px;}
+.hint{font-size:11.5px;color:var(--slate-400);}
+.banner-icon{width:18px;height:18px;flex-shrink:0;}
+.banner-icon svg{width:18px;height:18px;}
 .field-wrap.span-2{grid-column:span 2;}
 .field-wrap label{font-size:12.5px;font-weight:600;color:var(--slate-600);}
 .field-wrap label .req{color:var(--amber-600);}
@@ -430,6 +433,20 @@ tr.total-row{position:sticky;bottom:0;}
 .toast.error{background:var(--red-600);}
 .toast.info{background:var(--ink-800);}
 @keyframes toast-in{from{opacity:0;transform:translateX(30px);}to{opacity:1;transform:translateX(0);}}
+
+#save-flash{position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;background:rgba(11,31,38,.32);opacity:0;pointer-events:none;transition:opacity .2s var(--ease);}
+#save-flash.show{opacity:1;}
+.save-flash-card{background:var(--paper-0);border-radius:var(--radius-lg);padding:30px 42px;display:flex;flex-direction:column;align-items:center;gap:10px;box-shadow:var(--shadow-lg);transform:scale(.86);transition:transform .3s var(--ease);}
+#save-flash.show .save-flash-card{transform:scale(1);}
+.save-flash-check{width:56px;height:56px;}
+.save-flash-check circle{fill:none;stroke:var(--green-500);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:151;stroke-dashoffset:151;}
+.save-flash-check path{fill:none;stroke:var(--green-500);stroke-width:3;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:36;stroke-dashoffset:36;}
+#save-flash.show .save-flash-check circle{animation:sf-circle .4s var(--ease) forwards;}
+#save-flash.show .save-flash-check path{animation:sf-check .25s var(--ease) .35s forwards;}
+@keyframes sf-circle{to{stroke-dashoffset:0;}}
+@keyframes sf-check{to{stroke-dashoffset:0;}}
+.save-flash-text{font-family:var(--font-display);font-weight:600;font-size:15.5px;color:var(--ink-900);}
+@media (prefers-reduced-motion: reduce){#save-flash,.save-flash-card,.save-flash-check circle,.save-flash-check path{animation:none !important;transition:none !important;}}
 
 /* ============================================================
    MISC: chips, stepper, mapping ui, charts, loaders
@@ -570,6 +587,7 @@ tr.total-row{position:sticky;bottom:0;}
 
 <div id="modal-root"><div class="modal-backdrop" id="modal-backdrop"></div><div id="modal-slot"></div></div>
 <div id="toast-stack"></div>
+<div id="save-flash"><div class="save-flash-card"><svg class="save-flash-check" viewBox="0 0 52 52"><circle cx="26" cy="26" r="23"/><path d="M14.5 27l7 7 16-16"/></svg><div class="save-flash-text">Saved</div></div></div>
 
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
@@ -721,10 +739,15 @@ function debounce(fn, wait) { let t; return (...a) => { clearTimeout(t); t = set
 // Flexible date parser: handles Date objects, Excel serials, and common string formats -> 'YYYY-MM-DD' or null
 function parseFlexibleDate(value) {
   if (value === null || value === undefined || value === '') return null;
-  // SheetJS (cellDates:true) always hands back UTC-anchored Date objects, regardless of
-  // whether the source cell was a pure date or a date+time — reading it with local getters
-  // can silently shift the day depending on the browser's timezone, so use UTC getters here.
-  if (value instanceof Date && !isNaN(value)) return isoFromParts(value.getUTCFullYear(), value.getUTCMonth()+1, value.getUTCDate());
+  // SheetJS (cellDates:true) anchors a date-only Excel cell to LOCAL midnight of the intended
+  // calendar day (i.e. it effectively uses the browser's own timezone when building the Date
+  // object) — NOT UTC midnight. For anyone in a timezone ahead of UTC (like IST), reading that
+  // back with UTC getters lands on the previous day; local getters are what's actually correct.
+  // The +12h nudge below clears a small (well under a minute) floating-point fuzz in SheetJS's
+  // own serial->Date math that can otherwise sit right on a midnight boundary. Verified against
+  // real SheetJS output across a wide range of timezones (UTC-8 through UTC+14, including
+  // half-hour/quarter-hour offsets) before relying on this.
+  if (value instanceof Date && !isNaN(value)) { const nudged = new Date(value.getTime() + 12 * 3600 * 1000); return isoFromParts(nudged.getFullYear(), nudged.getMonth() + 1, nudged.getDate()); }
   if (typeof value === 'number') { // Excel serial date (a fractional part, if any, is just time-of-day and is ignored below)
     const epoch = new Date(Date.UTC(1899, 11, 30));
     const d = new Date(epoch.getTime() + value * 86400000);
@@ -769,6 +792,15 @@ function showToast(message, type) {
   t.innerHTML = icon(iconName) + '<span>' + escapeHtml(message) + '</span>';
   stack.appendChild(t);
   setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateX(30px)'; t.style.transition = 'all .25s ease'; setTimeout(() => t.remove(), 260); }, 3600);
+}
+
+let saveFlashTimeout = null;
+function showSaveFlash(message) {
+  const el = $('#save-flash');
+  if (saveFlashTimeout) clearTimeout(saveFlashTimeout);
+  el.querySelector('.save-flash-text').textContent = message || 'Saved';
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show'); // restart the draw-on animation even if re-triggered mid-flight
+  saveFlashTimeout = setTimeout(() => el.classList.remove('show'), 1100);
 }
 
 /* ---- Modal ---- */
@@ -1441,7 +1473,7 @@ async function renderDashboardView(content) {
 
   content.innerHTML = `
     <div class="view">
-      ${rowCount === 0 ? `<div class="card card-pad" style="margin-bottom:18px;background:var(--teal-50);border-color:var(--teal-100);display:flex;gap:10px;align-items:center;color:var(--teal-700);font-size:13.5px;font-weight:500;">${icon('info')} No prescriptions yet — add your first entry or import historical data to see your conversion overview.</div>` : ''}
+      ${rowCount === 0 ? `<div class="card card-pad" style="margin-bottom:18px;background:var(--teal-50);border-color:var(--teal-100);display:flex;gap:10px;align-items:center;color:var(--teal-700);font-size:13.5px;font-weight:500;"><span class="banner-icon">${icon('info')}</span> No prescriptions yet — add your first entry or import historical data to see your conversion overview.</div>` : ''}
       <div class="stat-grid">
         <div class="stat-card accent-ink"><div class="lbl"><span class="stat-icon-badge badge-ink">${icon('fileText')}</span> Total Prescriptions</div><div class="val" id="cu-1">0</div></div>
         <div class="stat-card accent-teal"><div class="lbl"><span class="stat-icon-badge badge-teal">${icon('flask')}</span> Total Test Given</div><div class="val" id="cu-2">0</div></div>
@@ -1883,14 +1915,18 @@ function rxRowHtml(r) {
   </tr>`;
 }
 
-function initSearchSelect(id, options, initialValue, onSelect) {
+function initSearchSelect(id, options, initialValue, onSelect, blankLabel) {
   const root = document.getElementById(id);
   if (!root) return null;
   let opts = options.slice();
   if (initialValue && !opts.some(o => o.value === initialValue)) opts = [{ value: initialValue, label: initialValue + ' (custom)' }].concat(opts);
   let value = initialValue || '';
-  const selectedOpt = opts.find(o => o.value === value);
-  root.innerHTML = `<input type="text" class="ss-input" autocomplete="off" placeholder="Type to search…" value="${escapeHtml(selectedOpt ? selectedOpt.label : '')}"><div class="ss-dropdown hidden"></div>`;
+  // When blankLabel is given and the current value equals it, show an empty box (with the
+  // label as a grayed placeholder) instead of writing the label in as literal text — so a
+  // field can have a real default value without forcing the user to delete pre-filled text
+  // before they can start typing a search term.
+  function labelFor(v) { if (blankLabel !== undefined && v === blankLabel) return ''; const o = opts.find(x => x.value === v); return o ? o.label : ''; }
+  root.innerHTML = `<input type="text" class="ss-input" autocomplete="off" placeholder="${blankLabel !== undefined ? escapeHtml(blankLabel) : 'Type to search…'}" value="${escapeHtml(labelFor(value))}"><div class="ss-dropdown hidden"></div>`;
   const input = root.querySelector('.ss-input'), dropdown = root.querySelector('.ss-dropdown');
   let activeIndex = -1, visible = [];
 
@@ -1903,8 +1939,8 @@ function initSearchSelect(id, options, initialValue, onSelect) {
     dropdown.querySelectorAll('.ss-option').forEach(el => el.addEventListener('mousedown', (e) => { e.preventDefault(); choose(visible[+el.dataset.i]); }));
   }
   function choose(opt) {
-    value = opt ? opt.value : '';
-    input.value = opt ? opt.label : '';
+    value = opt ? opt.value : (blankLabel !== undefined ? blankLabel : '');
+    input.value = labelFor(value);
     dropdown.classList.add('hidden');
     if (onSelect) onSelect(value, opt);
   }
@@ -1926,8 +1962,7 @@ function initSearchSelect(id, options, initialValue, onSelect) {
   input.addEventListener('blur', () => {
     setTimeout(() => {
       dropdown.classList.add('hidden');
-      const opt = opts.find(o => o.value === value);
-      input.value = opt ? opt.label : '';
+      input.value = labelFor(value);
     }, 150);
   });
   return {
@@ -1936,8 +1971,7 @@ function initSearchSelect(id, options, initialValue, onSelect) {
       opts = newOptions.slice();
       if (newValue !== undefined) value = newValue;
       if (value && !opts.some(o => o.value === value)) opts = [{ value, label: value + ' (custom)' }].concat(opts);
-      const o = opts.find(x => x.value === value);
-      input.value = o ? o.label : '';
+      input.value = labelFor(value);
     },
   };
 }
@@ -2095,7 +2129,7 @@ async function renderPrescriptionFormView(content, params) {
       const isNoTest = val === NO_TEST_LABEL;
       amountSingle.disabled = isNoTest;
       amountSingle.value = isNoTest ? 0 : (opt && opt.amount !== undefined ? opt.amount : amountSingle.value);
-    });
+    }, NO_TEST_LABEL);
   }
 
   $('#rxp-save').addEventListener('click', async () => {
@@ -2144,7 +2178,9 @@ async function renderPrescriptionFormView(content, params) {
         if (fieldChanges.length) stageHistoryEntry(editBatch, ref, { action: 'edited', byUid: state.user.uid, byName: state.user.name, changes: fieldChanges });
         await editBatch.commit();
         savedRefs = [ref];
-        showToast('Prescription updated', 'success');
+        await quickMatchBatch(savedRefs);
+        showSaveFlash('Updated');
+        navigateTo('prescriptions');
       } else {
         const rowEls = $$('#test-rows-container .test-row');
         const docs = [];
@@ -2163,10 +2199,12 @@ async function renderPrescriptionFormView(content, params) {
         // from a separate earlier entry — reconciled automatically next time Run Matching runs).
         stageSummaryChanges(batch, state.companyId, docs.map((d, i) => i === 0 ? { oldRow: null, newRow: d, visitDelta: 1 } : { oldRow: null, newRow: d }));
         await batch.commit();
-        showToast(`${docs.length} prescription row(s) saved`, 'success');
+        await quickMatchBatch(savedRefs);
+        showSaveFlash(docs.length > 1 ? `${docs.length} rows saved` : 'Saved');
+        // Stay on a fresh, blank form instead of returning to the list — the flash overlay
+        // doesn't block input, so the next entry can start immediately.
+        renderPrescriptionFormView(content);
       }
-      await quickMatchBatch(savedRefs);
-      navigateTo('prescriptions');
     } catch (err) {
       showToast(friendlyError(err), 'error');
       setBtnLoading(btn, false, `${icon('check')} ${isEdit ? 'Save Changes' : 'Save Prescription'}`);
@@ -2202,7 +2240,7 @@ function addTestRow() {
     amountInput.disabled = isNoTest;
     amountInput.value = isNoTest ? 0 : (opt && opt.amount !== undefined ? opt.amount : 0);
     updateTestsSummary();
-  });
+  }, NO_TEST_LABEL);
   div.querySelector('.tr-remove').addEventListener('click', () => {
     if ($$('#test-rows-container .test-row').length > 1) { div.remove(); renumberTestRows(); updateTestsSummary(); }
     else showToast('At least one test is required', 'error');
@@ -2235,7 +2273,7 @@ async function deletePrescriptionRow(id, row) {
     stageSummaryChanges(batch, state.companyId, [{ oldRow: row, newRow: null, visitDelta: isLastOfVisit ? -1 : 0 }]);
     await batch.commit();
     invalidatePrescriptionsCache();
-    showToast(isSoft ? 'Moved to Recycle Bin' : 'Deleted', 'success');
+    showToast('Deleted', 'success');
     navigateTo('prescriptions');
   }
   catch (e) { showToast(friendlyError(e), 'error'); }
@@ -2287,7 +2325,7 @@ const PRESCRIPTION_IMPORT_FIELDS = [
   { key: 'uhid', label: 'UHID', required: true },
   { key: 'patientName', label: 'Patient Name', required: true },
   { key: 'consultant', label: 'Consultant', required: false },
-  { key: 'testGiven', label: 'Test Given', required: false },
+  { key: 'testGiven', label: 'Test Given', required: true },
   { key: 'testAmount', label: 'Test Amount', required: false },
   { key: 'consultationFollowUp', label: 'Consultation Follow Up', required: false },
   { key: 'testFollowUp', label: 'Test Follow Up', required: false },
@@ -2346,9 +2384,9 @@ function openBulkImportPrescriptionsModal() {
 
   function updatePreview() {
     const map = currentMap();
-    const ready = map.date && map.uhid && map.patientName;
+    const ready = PRESCRIPTION_IMPORT_FIELDS.filter(f => f.required).every(f => map[f.key]);
     $('#bi-import').disabled = !ready;
-    if (!ready) { $('#bi-preview').innerHTML = `<p class="u-muted" style="font-size:12.5px;margin-top:10px;">Map Date, UHID, and Patient Name to continue.</p>`; return; }
+    if (!ready) { $('#bi-preview').innerHTML = `<p class="u-muted" style="font-size:12.5px;margin-top:10px;">Map Date, UHID, Patient Name, and Test Given to continue.</p>`; return; }
     const built = fileRows.map(r => buildPrescriptionImportRow(r, map));
     parsedRows = built.filter(r => r.uhid && r.date);
     skippedCount = built.length - parsedRows.length;
@@ -2565,7 +2603,7 @@ async function renderUserManagementView(content) {
   $('#topbar-actions').innerHTML = `<button class="btn btn-primary" id="um-add">${icon('plusCircle')} Add Agent</button>`;
   content.innerHTML = `<div class="view">
     <div class="card card-pad" style="margin-bottom:18px;background:var(--teal-50);border-color:var(--teal-100);color:var(--teal-700);font-size:13px;display:flex;gap:10px;align-items:center;">
-      ${icon('info')} Agents can enter and edit prescriptions. Turn on Billing Access below for any agent who should also be able to upload monthly billing dumps — everything else stays Admin-only.
+      <span class="banner-icon">${icon('info')}</span> Agents can enter and edit prescriptions. Turn on Billing Access below for any agent who should also be able to upload monthly billing dumps — everything else stays Admin-only.
     </div>
     <div class="card"><div class="table-wrap" id="um-list"><div class="u-center" style="padding:50px 0;"><div class="loader-ring"></div></div></div></div>
   </div>`;
