@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
 <title>CXDX · Prescription vs Conversion Analysis</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2222%22 fill=%22%230E7C7B%22/><path d=%22M18 55 L36 55 L44 30 L56 72 L64 45 L72 55 L84 55%22 stroke=%22white%22 stroke-width=%228%22 fill=%22none%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -47,7 +47,6 @@
   --shadow-md:0 6px 20px rgba(11,31,38,0.08);
   --shadow-lg:0 16px 40px rgba(11,31,38,0.14);
   --ease:cubic-bezier(.4,0,.2,1);
-  --transition:200ms var(--ease);
   --font-display:'Space Grotesk',sans-serif;
   --font-body:'Inter',sans-serif;
   --font-mono:'IBM Plex Mono',monospace;
@@ -404,8 +403,6 @@ tr.total-row{position:sticky;bottom:0;}
 .empty-state svg{width:46px;height:46px;color:var(--slate-300);margin:0 auto 14px;}
 .empty-state h4{font-family:var(--font-display);font-size:15.5px;color:var(--ink-900);margin-bottom:5px;}
 .empty-state p{font-size:13px;max-width:340px;margin:0 auto;}
-/* Highlight rows in billing upload preview whose date couldn't be parsed */
-.unparsed-row td{background:var(--red-100);color:var(--red-600);} 
 
 /* ============================================================
    MODAL / TOAST / OVERLAY
@@ -622,10 +619,6 @@ const firebaseConfig = {
   appId: "1:15970723098:web:ce6a244cffc5d6680678a3"
 };
 
-// NOTE: Verify `storageBucket` value in Firebase Console; the common default is
-// `${firebaseConfig.projectId}.appspot.com`. Do not commit private service account
-// credentials into the client.
-
 const CONFIG_IS_PLACEHOLDER = firebaseConfig.apiKey === "YOUR_API_KEY";
 
 const fbApp = initializeApp(firebaseConfig);
@@ -743,16 +736,6 @@ function formatDateDisplay(iso) { if(!iso) return '—'; const d = new Date(iso 
 function validateEmail(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
 function debounce(fn, wait) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), wait); }; }
 
-// Ensure a prescription document is presented in the unified shape: { ...fields, tests: [...] }
-function normalizePrescriptionRow(r) {
-  if (!r) return r;
-  if (Array.isArray(r.tests)) return r;
-  if (r.testGiven !== undefined) {
-    return Object.assign({}, r, { tests: [{ testGiven: r.testGiven, testAmount: r.testAmount || 0, matchStatus: r.matchStatus || (r.testGiven === NO_TEST_LABEL ? 'no-test' : 'leakage'), matchedAmount: r.matchedAmount || 0, matchedBillingRef: r.matchedBillingRef || null }] });
-  }
-  return Object.assign({}, r, { tests: r.tests || [] });
-}
-
 // Flexible date parser: handles Date objects, Excel serials, and common string formats -> 'YYYY-MM-DD' or null
 function parseFlexibleDate(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -784,7 +767,7 @@ function parseFlexibleDate(value) {
 }
 function isoFromParts(y, m, d) { if(!y||!m||!d) return null; return y + '-' + String(m).padStart(2,'0') + '-' + String(d).padStart(2,'0'); }
 function isValidISODate(v) { return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v); }
-// Removed unused helper `isoToExcelDate` — dates are handled via other helpers.
+function isoToExcelDate(iso) { if (!isValidISODate(iso)) return iso || ''; const [y, m, d] = iso.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); }
 
 function animateCountUp(el, target, opts) {
   const isMoney = opts && opts.money, isPct = opts && opts.pct;
@@ -1587,48 +1570,22 @@ function invalidatePrescriptionsCache() { prescriptionsCache = null; prescriptio
 async function loadAllPrescriptions(forceRefresh) {
   if (!forceRefresh && prescriptionsCache && prescriptionsCacheCompanyId === state.companyId) return prescriptionsCache;
   const snap = await getDocs(query(collection(db, 'companies', state.companyId, 'prescriptions'), orderBy('date', 'desc')));
-  // Normalize documents so each prescription represents a visit and contains a `tests` array.
-  const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  prescriptionsCache = docs.map(r => {
-    // If this doc is a legacy single-test row, convert to new shape in-memory.
-    if (!r.tests) {
-      if (r.testGiven !== undefined) {
-        const t = {
-          testGiven: r.testGiven,
-          testAmount: r.testAmount || 0,
-          matchStatus: r.matchStatus || (r.testGiven === NO_TEST_LABEL ? 'no-test' : 'leakage'),
-          matchedAmount: r.matchedAmount || 0,
-          matchedBillingRef: r.matchedBillingRef || null,
-        };
-        return Object.assign({}, r, { tests: [t] });
-      }
-      // no explicit tests and no legacy fields -> ensure tests is an empty array
-      return Object.assign({}, r, { tests: r.tests || [] });
-    }
-    return r;
-  }).filter(r => !r.deleted);
+  prescriptionsCache = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => !r.deleted);
   prescriptionsCacheCompanyId = state.companyId;
   return prescriptionsCache;
 }
 function computeSummaryStats(rows) {
   const distinctVisits = new Set(rows.map(r => (r.uhid || '') + '|' + (r.date || '')));
-  let totalTestGiven = 0, matchedCount = 0, prescriptionValue = 0, conversionValue = 0, leakageValue = 0, noTestCount = 0;
-  rows.forEach(r => {
-    const tests = Array.isArray(r.tests) && r.tests.length ? r.tests : (r.testGiven !== undefined ? [{ testGiven: r.testGiven, testAmount: r.testAmount, matchStatus: r.matchStatus, matchedAmount: r.matchedAmount }] : []);
-    if (!tests.length) { noTestCount += 1; return; }
-    tests.forEach(t => {
-      const isNoTest = t.testGiven === NO_TEST_LABEL || t.matchStatus === 'no-test';
-      if (isNoTest) { noTestCount += 1; return; }
-      totalTestGiven += 1;
-      const amt = toNum(t.testAmount);
-      prescriptionValue += amt;
-      if (t.matchStatus === 'matched') { matchedCount += 1; conversionValue += toNum(t.matchedAmount); }
-      else { leakageValue += amt; }
-    });
-  });
+  const testRows = rows.filter(r => r.matchStatus !== 'no-test');
+  const totalTestGiven = testRows.length;
+  const matched = testRows.filter(r => r.matchStatus === 'matched');
+  const prescriptionValue = testRows.reduce((s, r) => s + toNum(r.testAmount), 0);
+  const conversionValue = matched.reduce((s, r) => s + toNum(r.matchedAmount), 0);
+  const leakageRows = testRows.filter(r => r.matchStatus !== 'matched');
+  const leakageValue = leakageRows.reduce((s, r) => s + toNum(r.testAmount), 0);
   return {
-    totalPrescription: distinctVisits.size, totalTestGiven, totalConversion: matchedCount,
-    totalLeakageCount: totalTestGiven - matchedCount, totalNoTestCount: noTestCount,
+    totalPrescription: distinctVisits.size, totalTestGiven, totalConversion: matched.length,
+    totalLeakageCount: totalTestGiven - matched.length, totalNoTestCount: rows.length - testRows.length,
     prescriptionValue, conversionValue, leakageValue,
     conversionPct: prescriptionValue > 0 ? (conversionValue / prescriptionValue) * 100 : 0,
     leakagePct: prescriptionValue > 0 ? (leakageValue / prescriptionValue) * 100 : 0,
@@ -1658,17 +1615,13 @@ function zeroContrib() { const o = {}; SUMMARY_KEYS.forEach(k => o[k] = 0); retu
 function rowStatContribution(row) {
   const c = zeroContrib();
   if (!row) return c;
-  // Handle both new `tests` array shape and legacy single-test rows.
-  const tests = Array.isArray(row.tests) && row.tests.length ? row.tests : (row.testGiven !== undefined ? [row] : []);
-  if (!tests.length) return c;
-  tests.forEach(t => {
-    if (t.testGiven === NO_TEST_LABEL || t.matchStatus === 'no-test') { c.noTestCount += 1; return; }
-    c.testGivenCount += 1;
-    c.matchedCount += (t.matchStatus === 'matched') ? 1 : 0;
-    c.prescriptionValue += toNum(t.testAmount);
-    c.conversionValue += (t.matchStatus === 'matched') ? toNum(t.matchedAmount) : 0;
-    c.leakageValue += (t.matchStatus === 'matched') ? 0 : toNum(t.testAmount);
-  });
+  if (row.matchStatus === 'no-test') { c.noTestCount = 1; return c; }
+  const isMatched = row.matchStatus === 'matched';
+  c.testGivenCount = 1;
+  c.matchedCount = isMatched ? 1 : 0;
+  c.prescriptionValue = toNum(row.testAmount);
+  c.conversionValue = isMatched ? toNum(row.matchedAmount) : 0;
+  c.leakageValue = isMatched ? 0 : toNum(row.testAmount);
   return c;
 }
 function addContribInto(target, c, mult) { SUMMARY_KEYS.forEach(k => target[k] = (target[k] || 0) + c[k] * mult); }
@@ -1789,10 +1742,12 @@ async function renderPrescriptionsView(content) {
     : `
     <button class="btn btn-secondary" id="rx-recycle-btn">${icon('inbox')} Recycle Bin</button>
     <button class="btn btn-secondary" id="rx-import-btn">${icon('uploadCloud')} Import</button>
+    <button class="btn btn-secondary" id="rx-template-btn">${icon('download')} Template</button>
     <button class="btn btn-primary" id="rx-new-btn">${icon('plusCircle')} New Prescription</button>
   `;
   $('#rx-new-btn').addEventListener('click', () => navigateTo('rx-form'));
   if (!state.isAgent) {
+    $('#rx-template-btn').addEventListener('click', downloadPrescriptionTemplate);
     $('#rx-import-btn').addEventListener('click', openBulkImportPrescriptionsModal);
     $('#rx-recycle-btn').addEventListener('click', () => navigateTo('recycle-bin'));
   }
@@ -1888,7 +1843,7 @@ async function loadRxServerPage() {
   rxServerHasMore = docs.length > RX_PAGE_SIZE;
   const pageDocs = rxServerHasMore ? docs.slice(0, RX_PAGE_SIZE) : docs;
   if (pageDocs.length) rxCursors[rxPage] = pageDocs[pageDocs.length - 1];
-  const rows = pageDocs.map(d => normalizePrescriptionRow(Object.assign({ id: d.id }, d.data()))).filter(r => !r.deleted);
+  const rows = pageDocs.map(d => ({ id: d.id, ...d.data() })).filter(r => !r.deleted);
   renderRxTableRows(rows, {
     countLabel: rxServerTotalCount !== null ? `${rxServerTotalCount} rows · Page ${rxPage}` : `Page ${rxPage}`,
     hasPrev: rxPage > 1, hasNext: rxServerHasMore,
@@ -1950,21 +1905,12 @@ function renderRxTableRows(rows, pagerOpts) {
   $('#rx-next').addEventListener('click', pagerOpts.onNext);
 }
 function rxRowHtml(r) {
-  // Render a visit row that may contain multiple tests.
-  const tests = Array.isArray(r.tests) ? r.tests : (r.testGiven !== undefined ? [{ testGiven: r.testGiven, testAmount: r.testAmount, matchStatus: r.matchStatus, matchedAmount: r.matchedAmount }] : []);
-  const testsHtml = tests.map(t => `${escapeHtml(t.testGiven || '—')} ${t.testAmount ? '(' + formatMoney(t.testAmount) + ')' : ''}${t.matchStatus === 'matched' ? ' ✓' : ''}`).join('<br>');
-  const totalAmt = tests.reduce((s, t) => s + toNum(t.testAmount), 0);
-  const totalMatched = tests.reduce((s, t) => s + (t.matchStatus === 'matched' ? toNum(t.matchedAmount) : 0), 0);
-  // Determine an overall status for the visit: if any test is leakage, show leakage; else if all no-test show No Test; else if all matched show Completed.
-  const anyLeak = tests.some(t => t.matchStatus === 'leakage');
-  const allNoTest = tests.every(t => t.testGiven === NO_TEST_LABEL || t.matchStatus === 'no-test');
-  const allMatched = tests.length > 0 && tests.every(t => t.matchStatus === 'matched');
-  const pseudoRow = { matchStatus: allMatched ? 'matched' : allNoTest ? 'no-test' : (anyLeak ? 'leakage' : 'leakage') };
+  const matched = r.matchStatus === 'matched';
   return `<tr>
     <td>${formatDateDisplay(r.date)}</td><td class="uhid-cell">${escapeHtml(r.uhid)}</td><td>${escapeHtml(r.patientName)}</td>
-    <td>${escapeHtml(r.consultant || '—')}</td><td>${testsHtml}</td><td class="num">${formatMoney(totalAmt)}</td>
-    <td>${statusBadgeHtml(pseudoRow)}</td>
-    <td class="num">${totalMatched > 0 ? formatMoney(totalMatched) : '—'}</td><td>${escapeHtml(r.enteredBy || '—')}</td>${customFieldsTableCellsHtml(r)}
+    <td>${escapeHtml(r.consultant || '—')}</td><td>${escapeHtml(r.testGiven)}</td><td class="num">${formatMoney(r.testAmount)}</td>
+    <td>${statusBadgeHtml(r)}</td>
+    <td class="num">${matched ? formatMoney(r.matchedAmount) : '—'}</td><td>${escapeHtml(r.enteredBy || '—')}</td>${customFieldsTableCellsHtml(r)}
     <td><div class="u-flex u-gap-8"><button class="icon-btn" id="hist-${r.id}" title="History">${icon('info')}</button><button class="icon-btn" id="edit-${r.id}">${icon('edit')}</button><button class="icon-btn danger" id="del-${r.id}">${icon('trash')}</button></div></td>
   </tr>`;
 }
@@ -2103,8 +2049,7 @@ function stageHistoryEntry(batch, ref, entry) {
 }
 
 async function renderPrescriptionFormView(content, params) {
-  let existing = params && params.editing;
-  if (existing) existing = normalizePrescriptionRow(existing);
+  const existing = params && params.editing;
   const isEdit = !!existing;
   $('#topbar-title').textContent = isEdit ? 'Edit Prescription' : 'New Prescription';
   $('#topbar-sub').textContent = isEdit ? `${existing.patientName} · ${existing.uhid}` : 'Add a prescription entry';
@@ -2129,12 +2074,16 @@ async function renderPrescriptionFormView(content, params) {
           ${isEdit ? '' : `<span class="tests-summary-pill" id="tests-summary">0 tests · ${formatMoney(0)}</span>`}
         </div>
         <div style="margin-top:14px;">
-          <div id="test-rows-container"></div>
-          <div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <button type="button" class="btn btn-secondary btn-sm" id="add-test-row-btn">${icon('plus')} Add Another Test</button>
-            <span class="tests-summary-pill" id="tests-summary">0 tests · ${formatMoney(0)}</span>
+          ${isEdit ? `
+          <div class="form-grid cols-3">
+            <div class="field-wrap span-2"><label>Test Given <span class="req">*</span></label><div class="search-select" id="rx-test-single"></div></div>
+            <div class="field-wrap"><label>Amount <span class="req">*</span></label><input type="number" id="rx-amount-single" value="${existing.testAmount}" ${existing.testGiven === NO_TEST_LABEL ? 'disabled' : ''}></div>
           </div>
+          ` : `
+          <div id="test-rows-container"></div>
+          <button type="button" class="btn btn-secondary btn-sm" id="add-test-row-btn">${icon('plus')} Add Another Test</button>
           <p class="hint" style="margin-top:10px;">Tip: type to search, then press Enter in a test row to quickly add another.</p>
+          `}
         </div>
       </div>
 
@@ -2158,34 +2107,33 @@ async function renderPrescriptionFormView(content, params) {
   $('#rxp-cancel').addEventListener('click', () => navigateTo('prescriptions'));
   bindUhidNormalize($('#rx-uhid'));
   const consultantSelect = initSearchSelect('rx-consultant', doctorSearchOptions(), existing ? existing.consultant : '');
-  // Tests area: support multiple editable test rows for both new and edit flows.
+  let testSingleSelect = null;
+
   if (!isEdit) {
     addTestRow();
+    updateTestsSummary();
+    $('#add-test-row-btn').addEventListener('click', () => { const row = addTestRow(); updateTestsSummary(); if (row) row.querySelector('.ss-input').focus(); });
+    $('#test-rows-container').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const row = addTestRow();
+        updateTestsSummary();
+        if (row) row.querySelector('.ss-input').focus();
+      }
+    });
+    $('#test-rows-container').addEventListener('input', updateTestsSummary);
+    $('#rx-uhid').focus();
   } else {
-    // Prepopulate test rows from the existing prescription's tests array
-    const existingTests = Array.isArray(existing.tests) ? existing.tests : (existing.testGiven !== undefined ? [{ testGiven: existing.testGiven, testAmount: existing.testAmount || 0, matchStatus: existing.matchStatus, matchedAmount: existing.matchedAmount || 0, matchedBillingRef: existing.matchedBillingRef || null }] : []);
-    // If there are no tests (edge case), ensure one empty row remains
-    if (!existingTests.length) addTestRow();
-    else {
-      // fill rows in the same order
-      for (const t of existingTests) addTestRow(t.testGiven, t.testAmount || 0, t.matchStatus || null, t.matchedAmount || 0, t.matchedBillingRef || null);
-    }
+    const amountSingle = $('#rx-amount-single');
+    testSingleSelect = initSearchSelect('rx-test-single', testSearchOptions(), existing.testGiven, (val, opt) => {
+      const isNoTest = val === NO_TEST_LABEL;
+      amountSingle.disabled = isNoTest;
+      amountSingle.value = isNoTest ? 0 : (opt && opt.amount !== undefined ? opt.amount : amountSingle.value);
+    }, NO_TEST_LABEL);
   }
-  updateTestsSummary();
-  $('#add-test-row-btn').addEventListener('click', () => { const row = addTestRow(); updateTestsSummary(); if (row) row.querySelector('.ss-input').focus(); });
-  $('#test-rows-container').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const row = addTestRow();
-      updateTestsSummary();
-      if (row) row.querySelector('.ss-input').focus();
-    }
-  });
-  $('#test-rows-container').addEventListener('input', updateTestsSummary);
-  $('#rx-uhid').focus();
 
   $('#rxp-save').addEventListener('click', async () => {
-    const date = parseFlexibleDate($('#rx-date').value);
+    const date = $('#rx-date').value;
     const uhidVal = normalizeUHID($('#rx-uhid').value);
     const patientName = $('#rx-patient').value.trim();
     const consultant = consultantSelect.getValue();
@@ -2198,39 +2146,20 @@ async function renderPrescriptionFormView(content, params) {
     try {
       let savedRefs = [];
       if (isEdit) {
+        const testGiven = testSingleSelect.getValue(), testAmount = toNum($('#rx-amount-single').value);
         const ref = doc(db, 'companies', state.companyId, 'prescriptions', existing.id);
-        const oldRow = normalizePrescriptionRow(existing); // ensure unified shape
+        const oldRow = existing; // already the current persisted state — it's what populated this form
+        // enteredBy is set once at creation and never changes on edit — it's "who originally
+        // entered this". Who most recently touched it is tracked separately below.
         const enteredBy = existing.enteredBy;
-        // Collect test rows from the DOM and preserve any existing match metadata where possible.
-        const rowEls = $$('#test-rows-container .test-row');
-        const newTests = [];
-        for (let i = 0; i < rowEls.length; i++) {
-          const rowEl = rowEls[i];
-          const testGiven = rowEl._testSelect ? rowEl._testSelect.getValue() : NO_TEST_LABEL;
-          const testAmount = toNum(rowEl.querySelector('.tr-amount').value);
-          let matchStatus = testGiven === NO_TEST_LABEL ? 'no-test' : 'leakage';
-          let matchedAmount = 0, matchedBillingRef = null;
-          // Prefer preserving original match metadata if the test name matches an old entry.
-          if (Array.isArray(oldRow.tests) && oldRow.tests.length) {
-            const byIndex = oldRow.tests[i];
-            if (byIndex && normalizeForCompare(byIndex.testGiven) === normalizeForCompare(testGiven)) {
-              matchStatus = byIndex.matchStatus || matchStatus;
-              matchedAmount = byIndex.matchedAmount || 0;
-              matchedBillingRef = byIndex.matchedBillingRef || null;
-            } else {
-              // fallback: try to find a matching test by name in prior array
-              const found = oldRow.tests.find(t => normalizeForCompare(t.testGiven) === normalizeForCompare(testGiven));
-              if (found) { matchStatus = found.matchStatus || matchStatus; matchedAmount = found.matchedAmount || 0; matchedBillingRef = found.matchedBillingRef || null; }
-            }
-          }
-          newTests.push({ testGiven, testAmount, matchStatus, matchedAmount, matchedBillingRef });
-        }
-        const newRow = Object.assign({}, oldRow, { date, uhid: uhidVal, patientName, consultant, enteredBy, consultationFollowUp: cfu, testFollowUp: tfu, remarks, tests: newTests, monthKey: monthKeyFromDate(date), custom });
+        const newRow = { ...existing, date, uhid: uhidVal, patientName, consultant, enteredBy, consultationFollowUp: cfu, testFollowUp: tfu, remarks, testGiven, testAmount, monthKey: monthKeyFromDate(date), custom };
         const visitKeyChanged = oldRow.uhid !== uhidVal || oldRow.date !== date;
         let summaryChanges;
         if (!visitKeyChanged) {
           summaryChanges = [{ oldRow, newRow }];
         } else {
+          // uhid/date changed — check (cheap, count-only) whether this empties the old visit or
+          // lands on an already-existing one, so the distinct-visit counter stays accurate.
           const [oldSiblings, newSiblings] = await Promise.all([
             getCountFromServer(query(collection(db, 'companies', state.companyId, 'prescriptions'), where('uhid', '==', oldRow.uhid), where('date', '==', oldRow.date))),
             getCountFromServer(query(collection(db, 'companies', state.companyId, 'prescriptions'), where('uhid', '==', uhidVal), where('date', '==', date))),
@@ -2243,10 +2172,9 @@ async function renderPrescriptionFormView(content, params) {
           ];
         }
         const editBatch = writeBatch(db);
-        editBatch.update(ref, { date, uhid: uhidVal, patientName, consultant, enteredBy, consultationFollowUp: cfu, testFollowUp: tfu, remarks, tests: newTests, monthKey: monthKeyFromDate(date), custom, lastModifiedByUid: state.user.uid, lastModifiedByName: state.user.name, lastModifiedAt: serverTimestamp() });
+        editBatch.update(ref, { date, uhid: uhidVal, patientName, consultant, enteredBy, consultationFollowUp: cfu, testFollowUp: tfu, remarks, testGiven, testAmount, monthKey: monthKeyFromDate(date), custom, lastModifiedByUid: state.user.uid, lastModifiedByName: state.user.name, lastModifiedAt: serverTimestamp() });
         stageSummaryChanges(editBatch, state.companyId, summaryChanges);
         const fieldChanges = computeFieldChanges(oldRow, newRow);
-        if (JSON.stringify(oldRow.tests || []) !== JSON.stringify(newRow.tests || [])) fieldChanges.push({ field: 'tests', label: 'Tests', from: JSON.stringify(oldRow.tests || []), to: JSON.stringify(newRow.tests || []) });
         if (fieldChanges.length) stageHistoryEntry(editBatch, ref, { action: 'edited', byUid: state.user.uid, byName: state.user.name, changes: fieldChanges });
         await editBatch.commit();
         savedRefs = [ref];
@@ -2256,26 +2184,23 @@ async function renderPrescriptionFormView(content, params) {
       } else {
         const rowEls = $$('#test-rows-container .test-row');
         const docs = [];
-        // Aggregate the multiple test rows into a single prescription document with a `tests` array.
-        const tests = [];
         for (const rowEl of rowEls) {
           const testGiven = rowEl._testSelect ? rowEl._testSelect.getValue() : NO_TEST_LABEL;
           const testAmount = toNum(rowEl.querySelector('.tr-amount').value);
           if (!testGiven) continue;
-          tests.push({ testGiven, testAmount, matchStatus: testGiven === NO_TEST_LABEL ? 'no-test' : 'leakage', matchedAmount: 0, matchedBillingRef: null });
+          docs.push({ date, uhid: uhidVal, patientName, consultant, enteredBy: state.user.name, enteredByUid: state.user.uid, consultationFollowUp: cfu, testFollowUp: tfu, remarks, testGiven, testAmount, monthKey: monthKeyFromDate(date), custom, matchStatus: 'leakage', matchedAmount: 0, matchedBillingRef: null, createdAt: serverTimestamp() });
         }
-        if (!tests.length) { showToast('Select at least one test', 'error'); setBtnLoading(btn, false, `${icon('check')} Save Prescription`); return; }
-        const withDefaults = { date, uhid: uhidVal, patientName, consultant, enteredBy: state.user.name, enteredByUid: state.user.uid, consultationFollowUp: cfu, testFollowUp: tfu, remarks, tests, monthKey: monthKeyFromDate(date), custom, createdAt: serverTimestamp() };
+        if (!docs.length) { showToast('Select at least one test', 'error'); setBtnLoading(btn, false, `${icon('check')} Save Prescription`); return; }
         const batch = writeBatch(db);
-        const ref = doc(collection(db, 'companies', state.companyId, 'prescriptions'));
-        batch.set(ref, withDefaults);
-        stageHistoryEntry(batch, ref, { action: 'created', byUid: state.user.uid, byName: state.user.name });
-        // Single visit document — this is a new distinct visit
-        stageSummaryChanges(batch, state.companyId, [{ oldRow: null, newRow: withDefaults, visitDelta: 1 }]);
+        savedRefs = docs.map(d => { const ref = doc(collection(db, 'companies', state.companyId, 'prescriptions')); batch.set(ref, d); stageHistoryEntry(batch, ref, { action: 'created', byUid: state.user.uid, byName: state.user.name }); return ref; });
+        // All rows share the same date/uhid (one visit) — a single visitDelta on the first entry
+        // covers the whole visit; this is the common "new visit" case and doesn't need a read to
+        // know it's new (a self-correcting approximation if the same uhid+date already existed
+        // from a separate earlier entry — reconciled automatically next time Run Matching runs).
+        stageSummaryChanges(batch, state.companyId, docs.map((d, i) => i === 0 ? { oldRow: null, newRow: d, visitDelta: 1 } : { oldRow: null, newRow: d }));
         await batch.commit();
-        savedRefs = [ref];
         await quickMatchBatch(savedRefs);
-        showSaveFlash(tests.length > 1 ? `${tests.length} tests saved in one prescription` : 'Saved');
+        showSaveFlash(docs.length > 1 ? `${docs.length} rows saved` : 'Saved');
         // Stay on a fresh, blank form instead of returning to the list — the flash overlay
         // doesn't block input, so the next entry can start immediately.
         renderPrescriptionFormView(content);
@@ -2298,7 +2223,7 @@ function renumberTestRows() {
   $$('#test-rows-container .test-row').forEach((row, i) => { const badge = row.querySelector('.row-num'); if (badge) badge.textContent = i + 1; });
 }
 let testRowIdCounter = 0;
-function addTestRow(initialTestGiven, initialAmount, initialMatchStatus, initialMatchedAmount, initialMatchedBillingRef) {
+function addTestRow() {
   const container = $('#test-rows-container');
   const div = document.createElement('div');
   div.className = 'test-row';
@@ -2310,20 +2235,12 @@ function addTestRow(initialTestGiven, initialAmount, initialMatchStatus, initial
     <button type="button" class="icon-btn danger tr-remove">${icon('x')}</button>`;
   container.appendChild(div);
   const amountInput = div.querySelector('.tr-amount');
-  // allow caller to prefill an existing test row when editing
-  const prefillTest = initialTestGiven !== undefined ? initialTestGiven : NO_TEST_LABEL;
-  div._testSelect = initSearchSelect(rowId, testSearchOptions(), prefillTest, (val, opt) => {
+  div._testSelect = initSearchSelect(rowId, testSearchOptions(), NO_TEST_LABEL, (val, opt) => {
     const isNoTest = val === NO_TEST_LABEL;
     amountInput.disabled = isNoTest;
     amountInput.value = isNoTest ? 0 : (opt && opt.amount !== undefined ? opt.amount : 0);
     updateTestsSummary();
   }, NO_TEST_LABEL);
-  if (initialAmount !== undefined) {
-    amountInput.value = initialAmount;
-    amountInput.disabled = (initialTestGiven === NO_TEST_LABEL);
-  }
-  // preserve original match metadata so edits can keep matchedAmount/matchStatus when unchanged
-  div._origTest = { matchStatus: initialMatchStatus || null, matchedAmount: initialMatchedAmount || 0, matchedBillingRef: initialMatchedBillingRef || null, testGiven: initialTestGiven };
   div.querySelector('.tr-remove').addEventListener('click', () => {
     if ($$('#test-rows-container .test-row').length > 1) { div.remove(); renumberTestRows(); updateTestsSummary(); }
     else showToast('At least one test is required', 'error');
@@ -2511,24 +2428,26 @@ function buildPrescriptionImportRow(r, map) {
   };
 }
 async function bulkImportPrescriptions(rows) {
-  // Group incoming rows by visit (uhid + date) so each visit becomes one prescription doc
-  const grouped = {};
-  for (const r of rows) {
-    const visitKey = (r.uhid || '') + '|' + (r.date || '');
-    if (!grouped[visitKey]) grouped[visitKey] = Object.assign({}, r, { tests: [] });
-    grouped[visitKey].tests.push({ testGiven: r.testGiven, testAmount: r.testAmount, matchStatus: r.testGiven === NO_TEST_LABEL ? 'no-test' : 'leakage', matchedAmount: 0, matchedBillingRef: null });
-  }
-  const entries = Object.values(grouped);
   let batch = writeBatch(db), n = 0;
+  const seenVisits = new Set();
   const summaryChanges = [];
-  for (const e of entries) {
-    const withDefaults = Object.assign({}, e, { monthKey: monthKeyFromDate(e.date), tests: e.tests, createdAt: serverTimestamp() });
+  for (const r of rows) {
+    const withDefaults = Object.assign({}, r, { monthKey: monthKeyFromDate(r.date), matchStatus: 'leakage', matchedAmount: 0, matchedBillingRef: null, createdAt: serverTimestamp() });
     batch.set(doc(collection(db, 'companies', state.companyId, 'prescriptions')), withDefaults);
-    n++; if (n === 450) { await batch.commit(); batch = writeBatch(db); n = 0; }
-    // One visit per grouped entry — visitDelta 1 if this is a new visit in the import batch.
-    summaryChanges.push({ oldRow: null, newRow: withDefaults, visitDelta: 1 });
+    n++;
+    if (n === 450) { await batch.commit(); batch = writeBatch(db); n = 0; }
+    // Dedupe distinct visits WITHIN this import batch (cheap, no reads). This can't see visits
+    // that already existed before the import, so it's a same-tradeoff approximation as new-visit
+    // saves — self-corrects on the next Run Matching, which the import UI already prompts for.
+    const visitKey = (r.uhid || '') + '|' + (r.date || '');
+    const isNewInBatch = !seenVisits.has(visitKey);
+    seenVisits.add(visitKey);
+    summaryChanges.push({ oldRow: null, newRow: withDefaults, visitDelta: isNewInBatch ? 1 : 0 });
   }
   if (n > 0) await batch.commit();
+  // Summary deltas are staged as their own batch(es), aggregated across the whole import, kept
+  // separate from the prescription-write chunks above so an import spanning many distinct months
+  // (many monthlySummaries docs touched) can never risk exceeding the 500-operation batch limit.
   for (let i = 0; i < summaryChanges.length; i += 450) {
     const summaryBatch = writeBatch(db);
     stageSummaryChanges(summaryBatch, state.companyId, summaryChanges.slice(i, i + 450));
@@ -2683,6 +2602,9 @@ VIEW_RENDERERS['masters'] = renderMastersView;
 async function renderUserManagementView(content) {
   $('#topbar-actions').innerHTML = `<button class="btn btn-primary" id="um-add">${icon('plusCircle')} Add Agent</button>`;
   content.innerHTML = `<div class="view">
+    <div class="card card-pad" style="margin-bottom:18px;background:var(--teal-50);border-color:var(--teal-100);color:var(--teal-700);font-size:13px;display:flex;gap:10px;align-items:center;">
+      <span class="banner-icon">${icon('info')}</span> Agents can enter and edit prescriptions. Turn on Billing Access below for any agent who should also be able to upload monthly billing dumps — everything else stays Admin-only.
+    </div>
     <div class="card"><div class="table-wrap" id="um-list"><div class="u-center" style="padding:50px 0;"><div class="loader-ring"></div></div></div></div>
   </div>`;
   $('#um-add').addEventListener('click', () => openAgentFormModal());
@@ -2911,8 +2833,6 @@ function openBillingUploadModal(replaceMonthKey) {
   $('#bu-drop').onclick = () => $('#bu-file').click();
 
   let fileRows = [];
-  let previewDateFix = null; // e.g. 'swapDM'
-  let previewSkipUnparsed = false;
   $('#bu-file').addEventListener('change', async (e) => {
     const file = e.target.files[0]; if (!file) return;
     $('#bu-fname').textContent = file.name;
@@ -2933,51 +2853,18 @@ function openBillingUploadModal(replaceMonthKey) {
       <div class="map-row"><div class="field-name"><span class="req-dot"></span>Amount</div><span class="arrow">${icon('chevronRight')}</span><select id="map-amount">${optionsHtml(guess.amount)}</select></div>
       <div class="map-row"><div class="field-name"><span class="req-dot"></span>Test Name</div><span class="arrow">${icon('chevronRight')}</span><select id="map-testName">${optionsHtml(guess.testName)}</select></div>
       <div class="map-row"><div class="field-name">Patient Name <span class="hint">(optional)</span></div><span class="arrow">${icon('chevronRight')}</span><select id="map-patientName">${optionsHtml(guess.patientName)}</select></div>
-      <div class="divider"></div>
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px;">
-        <div style="font-weight:600;color:var(--slate-600);font-size:13px;">Auto-suggest fixes:</div>
-        <button class="btn btn-ghost btn-sm" id="bu-fix-swap">Try swap D/M</button>
-        <button class="btn btn-ghost btn-sm" id="bu-fix-reset">Reset fixes</button>
-        <label style="margin-left:12px;display:flex;align-items:center;gap:8px;" title="Allow upload but skip rows with unparsed dates"><input type="checkbox" id="bu-skip-unparsed"> Skip unparsed rows (override)</label>
-      </div>
     `;
     ['uhid', 'date', 'amount', 'testName', 'patientName'].forEach(k => $('#map-' + k).addEventListener('change', updatePreview));
-    $('#bu-fix-swap').addEventListener('click', (e) => { previewDateFix = 'swapDM'; updatePreview(); });
-    $('#bu-fix-reset').addEventListener('click', (e) => { previewDateFix = null; $('#bu-skip-unparsed').checked = false; previewSkipUnparsed = false; updatePreview(); });
-    $('#bu-skip-unparsed').addEventListener('change', (e) => { previewSkipUnparsed = e.target.checked; updatePreview(); });
     updatePreview();
-  }
-  function parseWithFix(raw) {
-    if (raw === null || raw === undefined || raw === '') return null;
-    if (!previewDateFix) return parseFlexibleDate(raw);
-    const s = String(raw).trim();
-    if (previewDateFix === 'swapDM') {
-      const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
-      if (m) return parseFlexibleDate(m[2] + '-' + m[1] + '-' + m[3]);
-    }
-    return parseFlexibleDate(raw);
   }
   function currentMap() { return { uhid: $('#map-uhid').value, date: $('#map-date').value, amount: $('#map-amount').value, testName: $('#map-testName').value, patientName: $('#map-patientName').value }; }
   function updatePreview() {
     const map = currentMap();
     const ok = map.uhid && map.date && map.amount && map.testName;
-    if (!ok) {
-      $('#bu-confirm').disabled = true;
-      $('#bu-preview-zone').innerHTML = `<p class="u-muted" style="font-size:12.5px;margin-top:10px;">Map UHID, Date, Amount, and Test Name to continue — matching relies on all four.</p>`;
-      return;
-    }
-    // Build parsed preview using current suggested fix and check entire file for unparsed dates
-    const parsedAll = fileRows.map(r => ({ uhid: normalizeUHID(r[map.uhid]), date: parseWithFix(r[map.date]), amount: toNum(r[map.amount]), testName: map.testName ? r[map.testName] : '' }));
-    const unparsedCount = parsedAll.filter(r => !r.date).length;
-    const previewRows = parsedAll.slice(0, 5);
-    const blocked = (unparsedCount > 0) && !previewSkipUnparsed;
-    $('#bu-confirm').disabled = blocked;
-    let banner = '';
-    if (unparsedCount > 0) {
-      if (previewSkipUnparsed) banner = `<div style="padding:10px;margin-bottom:10px;border-radius:8px;background:var(--amber-100);color:var(--amber-600);font-weight:700;">${unparsedCount} row${unparsedCount>1?'s':''} will be skipped on upload (override enabled).</div>`;
-      else banner = `<div style="padding:10px;margin-bottom:10px;border-radius:8px;background:var(--red-100);color:var(--red-600);font-weight:700;">${unparsedCount} row${unparsedCount>1?'s':''} have unparsed dates — fix your file, try a suggested fix, or enable Skip unparsed rows.</div>`;
-    }
-    $('#bu-preview-zone').innerHTML = `${banner}<div class="divider"></div><span class="section-label">Preview (first 5 of ${fileRows.length} rows)</span><div class="table-wrap"><table><thead><tr><th>UHID</th><th>Date</th><th class="num">Amount</th><th>Test Name</th></tr></thead><tbody>${previewRows.map(r => `<tr${r.date ? '' : ' class="unparsed-row"'}><td class="uhid-cell">${escapeHtml(r.uhid) || '—'}</td><td>${r.date ? formatDateDisplay(r.date) : '<span style="color:var(--red-600);">unparsed</span>'}</td><td class="num">${formatMoney(r.amount)}</td><td>${escapeHtml(r.testName || '—')}</td></tr>`).join('')}</tbody></table></div>`;
+    $('#bu-confirm').disabled = !ok;
+    if (!ok) { $('#bu-preview-zone').innerHTML = `<p class="u-muted" style="font-size:12.5px;margin-top:10px;">Map UHID, Date, Amount, and Test Name to continue — matching relies on all four.</p>`; return; }
+    const previewRows = fileRows.slice(0, 5).map(r => ({ uhid: normalizeUHID(r[map.uhid]), date: parseFlexibleDate(r[map.date]), amount: toNum(r[map.amount]), testName: map.testName ? r[map.testName] : '' }));
+    $('#bu-preview-zone').innerHTML = `<div class="divider"></div><span class="section-label">Preview (first 5 of ${fileRows.length} rows)</span><div class="table-wrap"><table><thead><tr><th>UHID</th><th>Date</th><th class="num">Amount</th><th>Test Name</th></tr></thead><tbody>${previewRows.map(r => `<tr><td class="uhid-cell">${escapeHtml(r.uhid) || '—'}</td><td>${r.date ? formatDateDisplay(r.date) : '<span style="color:var(--red-600);">unparsed</span>'}</td><td class="num">${formatMoney(r.amount)}</td><td>${escapeHtml(r.testName || '—')}</td></tr>`).join('')}</tbody></table></div>`;
   }
 
   $('#bu-confirm').onclick = async () => {
@@ -2994,7 +2881,7 @@ function openBillingUploadModal(replaceMonthKey) {
     }
     const btn = $('#bu-confirm'); setBtnLoading(btn, true);
     try {
-      await uploadBillingDump(monthKey, fileRows, map, { skipUnparsed: previewSkipUnparsed, dateFix: previewDateFix });
+      await uploadBillingDump(monthKey, fileRows, map);
       closeModal();
       showToast('Billing dump uploaded. Upload any other months first, then run matching once from the Dashboard — this keeps Firebase usage down.', 'success');
       navigateTo('billing');
@@ -3002,21 +2889,13 @@ function openBillingUploadModal(replaceMonthKey) {
   };
 }
 
-async function uploadBillingDump(monthKey, fileRows, map, opts) {
-  opts = opts || {};
-  const skipUnparsed = !!opts.skipUnparsed;
-  const dateFix = opts.dateFix || null;
+async function uploadBillingDump(monthKey, fileRows, map) {
   await deleteAllInCollection(collection(db, 'companies', state.companyId, 'billingDumps', monthKey, 'rows'));
-  let batch = writeBatch(db), n = 0, count = 0, skipped = 0;
+  let batch = writeBatch(db), n = 0, count = 0;
   for (const r of fileRows) {
     const uhidVal = normalizeUHID(r[map.uhid]);
-    let dateVal = parseFlexibleDate(r[map.date]);
-    if (!dateVal && dateFix === 'swapDM') {
-      const s = String(r[map.date] || '').trim();
-      const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
-      if (m) dateVal = parseFlexibleDate(m[2] + '-' + m[1] + '-' + m[3]);
-    }
-    if (!uhidVal || !dateVal) { if (skipUnparsed) { skipped++; continue; } else continue; }
+    const dateVal = parseFlexibleDate(r[map.date]);
+    if (!uhidVal || !dateVal) continue;
     const rowData = { uhid: uhidVal, date: dateVal, amount: toNum(r[map.amount]), testName: map.testName ? (r[map.testName] || '').toString().trim() : '', patientName: map.patientName ? (r[map.patientName] || '').toString().trim() : '', used: false };
     batch.set(doc(collection(db, 'companies', state.companyId, 'billingDumps', monthKey, 'rows')), rowData);
     n++; count++;
@@ -3027,7 +2906,6 @@ async function uploadBillingDump(monthKey, fileRows, map, opts) {
   const newConfig = Object.assign({}, state.matchingConfig, { billingMap: map });
   await updateDoc(doc(db, 'companies', state.companyId), { matchingConfig: newConfig });
   state.matchingConfig = newConfig;
-  if (skipped > 0) showToast(`${skipped} row${skipped>1?'s':''} were skipped because dates could not be parsed`, 'info');
 }
 
 async function deleteBillingDump(monthKey) {
@@ -3094,27 +2972,8 @@ async function runMatching(companyId, windowDaysOverride) {
   const sortedPresc = prescriptions.slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
   for (const p of sortedPresc) {
-    // If this prescription contains multiple tests, run matching for each test separately
-    const candidatesForUhid = byUhid[p.uhid] || [];
-    if (Array.isArray(p.tests) && p.tests.length) {
-      const updatedTests = [];
-      let totalMatched = 0;
-      let anyLeak = false, allMatched = true, allNoTest = true;
-      for (const t of p.tests) {
-        const pForTest = Object.assign({}, p, { testGiven: t.testGiven, testAmount: t.testAmount });
-        const decision = decideMatch(pForTest, candidatesForUhid, usedBillingIds, windowDays);
-        updatedTests.push(Object.assign({}, t, { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef }));
-        totalMatched += decision.matchedAmount || 0;
-        if (decision.matchStatus !== 'matched') allMatched = false;
-        if (decision.matchStatus !== 'no-test') allNoTest = false;
-        if (decision.matchStatus === 'leakage') anyLeak = true;
-      }
-      const aggStatus = allMatched ? 'matched' : (allNoTest ? 'no-test' : (anyLeak ? 'leakage' : 'leakage'));
-      prescUpdates.push({ ref: p.ref, oldRow: p, data: { tests: updatedTests, matchStatus: aggStatus, matchedAmount: totalMatched } });
-    } else {
-      const decision = decideMatch(p, candidatesForUhid, usedBillingIds, windowDays);
-      prescUpdates.push({ ref: p.ref, oldRow: p, data: { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef } });
-    }
+    const decision = decideMatch(p, byUhid[p.uhid] || [], usedBillingIds, windowDays);
+    prescUpdates.push({ ref: p.ref, data: { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef } });
   }
 
   let batch = writeBatch(db), n = 0;
@@ -3158,6 +3017,7 @@ async function quickMatchBatch(prescriptionRefs) {
   const prescUpdates = [];
 
   for (const p of prescDocs.slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''))) {
+    if (p.testGiven === NO_TEST_LABEL) { prescUpdates.push({ ref: p.ref, oldRow: p, data: { matchStatus: 'no-test', matchedAmount: 0, matchedBillingRef: null } }); continue; }
     const startMonth = monthKeyFromDate(p.date);
     const endMonth = isUnlimited ? monthKeys[monthKeys.length - 1] || startMonth : monthKeyFromDate(addDaysISO(p.date, windowDays));
     const relevantMonths = monthKeys.filter(mk => mk >= startMonth && mk <= endMonth);
@@ -3167,28 +3027,8 @@ async function quickMatchBatch(prescriptionRefs) {
       const rowsSnap = await getDocs(qy);
       rowsSnap.docs.forEach(d => { const row = { id: d.id, ref: d.ref, ...d.data() }; if (!row.used) candidates.push(row); });
     }
-    // If this prescription contains multiple tests, match per-test
-    if (Array.isArray(p.tests) && p.tests.length) {
-      const updatedTests = [];
-      let totalMatched = 0; let anyLeak = false, allMatched = true, allNoTest = true;
-      for (const t of p.tests) {
-        if (t.testGiven === NO_TEST_LABEL) { updatedTests.push(Object.assign({}, t, { matchStatus: 'no-test', matchedAmount: 0, matchedBillingRef: null })); allMatched = false; continue; }
-        const pForTest = Object.assign({}, p, { testGiven: t.testGiven, testAmount: t.testAmount });
-        const decision = decideMatch(pForTest, candidates, usedInBatch, windowDays);
-        updatedTests.push(Object.assign({}, t, { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef }));
-        totalMatched += decision.matchedAmount || 0;
-        if (decision.matchStatus !== 'matched') allMatched = false;
-        if (decision.matchStatus !== 'no-test') allNoTest = false;
-        if (decision.matchStatus === 'leakage') anyLeak = true;
-      }
-      const aggStatus = allMatched ? 'matched' : (allNoTest ? 'no-test' : (anyLeak ? 'leakage' : 'leakage'));
-      prescUpdates.push({ ref: p.ref, oldRow: p, data: { tests: updatedTests, matchStatus: aggStatus, matchedAmount: totalMatched } });
-    } else {
-      // legacy single-test row path
-      if (p.testGiven === NO_TEST_LABEL) { prescUpdates.push({ ref: p.ref, oldRow: p, data: { matchStatus: 'no-test', matchedAmount: 0, matchedBillingRef: null } }); continue; }
-      const decision = decideMatch(p, candidates, usedInBatch, windowDays);
-      prescUpdates.push({ ref: p.ref, oldRow: p, data: { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef, consumedRef: decision.consumedRef } });
-    }
+    const decision = decideMatch(p, candidates, usedInBatch, windowDays);
+    prescUpdates.push({ ref: p.ref, oldRow: p, data: { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef, consumedRef: decision.consumedRef } });
   }
 
   const batch = writeBatch(db);
@@ -3332,16 +3172,8 @@ function renderDateWiseTable(rows) {
   draw();
 }
 function dwRowHtml(r) {
-  // Support both legacy single-test rows and the normalized `tests` array shape.
-  const tests = Array.isArray(r.tests) && r.tests.length ? r.tests : (r.testGiven !== undefined ? [{ testGiven: r.testGiven, testAmount: r.testAmount, matchStatus: r.matchStatus, matchedAmount: r.matchedAmount }] : []);
-  const testsText = tests.map(t => `${t.testGiven || '—'}${t.testAmount ? ' (' + formatMoney(t.testAmount) + ')' : ''}`).join('<br>');
-  const totalAmt = tests.reduce((s, t) => s + toNum(t.testAmount), 0);
-  const totalMatched = tests.reduce((s, t) => s + (t.matchStatus === 'matched' ? toNum(t.matchedAmount) : 0), 0);
-  const anyLeak = tests.some(t => t.matchStatus === 'leakage');
-  const allNoTest = tests.length > 0 && tests.every(t => t.testGiven === NO_TEST_LABEL || t.matchStatus === 'no-test');
-  const allMatched = tests.length > 0 && tests.every(t => t.matchStatus === 'matched');
-  const pseudoRow = { matchStatus: allMatched ? 'matched' : allNoTest ? 'no-test' : (anyLeak ? 'leakage' : 'leakage') };
-  return `<tr><td>${formatDateDisplay(r.date)}</td><td class="uhid-cell">${escapeHtml(r.uhid)}</td><td>${escapeHtml(r.patientName)}</td><td>${escapeHtml(r.consultant || '—')}</td><td>${testsText}</td><td class="num">${formatMoney(totalAmt)}</td><td>${statusBadgeHtml(pseudoRow)}</td><td class="num">${totalMatched > 0 ? formatMoney(totalMatched) : '—'}</td><td class="num">${pseudoRow.matchStatus === 'matched' || pseudoRow.matchStatus === 'no-test' ? '—' : formatMoney(totalAmt)}</td><td>${escapeHtml(r.enteredBy || '—')}</td>${customFieldsTableCellsHtml(r)}</tr>`;
+  const matched = r.matchStatus === 'matched', noTest = r.matchStatus === 'no-test';
+  return `<tr><td>${formatDateDisplay(r.date)}</td><td class="uhid-cell">${escapeHtml(r.uhid)}</td><td>${escapeHtml(r.patientName)}</td><td>${escapeHtml(r.consultant || '—')}</td><td>${escapeHtml(r.testGiven)}</td><td class="num">${formatMoney(r.testAmount)}</td><td>${statusBadgeHtml(r)}</td><td class="num">${matched ? formatMoney(r.matchedAmount) : '—'}</td><td class="num">${matched || noTest ? '—' : formatMoney(r.testAmount)}</td><td>${escapeHtml(r.enteredBy || '—')}</td>${customFieldsTableCellsHtml(r)}</tr>`;
 }
 
 // Converts a Firestore Timestamp (the prescription's createdAt) into a real JS Date for Excel export, or '' if absent.
@@ -3357,25 +3189,13 @@ function exportReportsExcel(monthly, overall, rows) {
   // Column order: ... Remarks, Entered On (auto date+time), [custom fields], Entered By (last)
   const dwHeaders = ['Date', 'UHID', 'Patient Name', 'Consultant', 'Test Given', 'Test Amount', 'Status', 'Matched Amount', 'Leakage Amount', 'Remarks', 'Entered On'].concat(customFieldsTemplateHeaders()).concat(['Entered By']);
   const enteredOnColIdx = 10;
-  // Flatten each prescription into one or more export rows: one row per test in the visit.
-  const dateWiseAoa = [dwHeaders].concat(rows.flatMap(r => {
-    const base = [(r.date || ''), r.uhid, r.patientName, r.consultant || ''];
-    const tests = Array.isArray(r.tests) && r.tests.length ? r.tests : (r.testGiven !== undefined ? [{ testGiven: r.testGiven, testAmount: r.testAmount, matchStatus: r.matchStatus, matchedAmount: r.matchedAmount }] : [{ testGiven: NO_TEST_LABEL, testAmount: 0, matchStatus: 'no-test', matchedAmount: 0 }]);
-    const customVals = customFieldsExportValues(r);
-    const enteredOn = tsToExcelDateTime(r.createdAt);
-    const enteredBy = r.enteredBy || '';
-    return tests.map(t => {
-      const testName = t.testGiven || '';
-      const testAmount = toNum(t.testAmount);
-      const matchedAmt = t.matchStatus === 'matched' ? toNum(t.matchedAmount) : 0;
-      const leakageAmt = (t.matchStatus === 'matched' || t.matchStatus === 'no-test') ? 0 : toNum(t.testAmount);
-      const status = statusLabel({ matchStatus: t.matchStatus });
-      return base.concat([testName, testAmount, status, matchedAmt, leakageAmt, r.remarks || '', enteredOn]).concat(customVals).concat([enteredBy]);
-    });
-  }));
+  const dateWiseAoa = [
+    dwHeaders,
+    ...rows.map(r => [isoToExcelDate(r.date), r.uhid, r.patientName, r.consultant || '', r.testGiven, toNum(r.testAmount), statusLabel(r), r.matchStatus === 'matched' ? toNum(r.matchedAmount) : 0, r.matchStatus === 'leakage' ? toNum(r.testAmount) : 0, r.remarks || '', tsToExcelDateTime(r.createdAt)].concat(customFieldsExportValues(r)).concat([r.enteredBy || ''])),
+  ];
   const wb = XLSX.utils.book_new();
   const ws1 = XLSX.utils.aoa_to_sheet(summaryAoa); ws1['!cols'] = summaryAoa[0].map(() => ({ wch: 19 }));
-  const ws2 = XLSX.utils.aoa_to_sheet(dateWiseAoa);
+  const ws2 = XLSX.utils.aoa_to_sheet(dateWiseAoa, { cellDates: true, dateNF: 'yyyy-mm-dd' });
   ws2['!cols'] = dateWiseAoa[0].map(() => ({ wch: 16 }));
   ws2['!cols'][enteredOnColIdx] = { wch: 19 };
   for (let r = 1; r < dateWiseAoa.length; r++) {
