@@ -3116,7 +3116,7 @@ async function runMatching(companyId, windowDaysOverride) {
       prescUpdates.push({ ref: p.ref, oldRow: p, data: { tests: updatedTests, matchStatus: aggStatus, matchedAmount: totalMatched } });
     } else {
       const decision = decideMatch(p, candidatesForUhid, usedBillingIds, windowDays);
-      prescUpdates.push({ ref: p.ref, oldRow: p, data: { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef } });
+      prescUpdates.push({ ref: p.ref, oldRow: p, data: { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef || null } });
     }
   }
 
@@ -3202,13 +3202,13 @@ async function quickMatchBatch(prescriptionRefs) {
       // legacy single-test row path
       if (p.testGiven === NO_TEST_LABEL) { prescUpdates.push({ ref: p.ref, oldRow: p, data: { matchStatus: 'no-test', matchedAmount: 0, matchedBillingRef: null } }); continue; }
       const decision = decideMatch(p, candidates, usedInBatch, windowDays);
-      prescUpdates.push({ ref: p.ref, oldRow: p, data: { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef, consumedRef: decision.consumedRef } });
+      prescUpdates.push({ ref: p.ref, oldRow: p, data: { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef || null, consumedRef: decision.consumedRef } });
     }
   }
 
   const batch = writeBatch(db);
   prescUpdates.forEach(u => {
-    batch.update(u.ref, { matchStatus: u.data.matchStatus, matchedAmount: u.data.matchedAmount, matchedBillingRef: u.data.matchedBillingRef });
+    batch.update(u.ref, { matchStatus: u.data.matchStatus, matchedAmount: u.data.matchedAmount, matchedBillingRef: u.data.matchedBillingRef || null });
     if (canWriteBillingRows() && u.data.consumedRef) batch.update(u.data.consumedRef, { used: true });
   });
   // Matching only ever changes matchStatus/matchedAmount on rows that already exist at a fixed
