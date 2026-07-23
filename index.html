@@ -1586,7 +1586,7 @@ let prescriptionsCacheCompanyId = null;
 function invalidatePrescriptionsCache() { prescriptionsCache = null; prescriptionsCacheCompanyId = null; }
 async function loadAllPrescriptions(forceRefresh) {
   if (!forceRefresh && prescriptionsCache && prescriptionsCacheCompanyId === state.companyId) return prescriptionsCache;
-  const snap = await getDocs(query(collection(db, 'companies', state.companyId, 'prescriptions'), orderBy('date', 'desc')));
+  const snap = await getDocs(query(collection(db, 'companies', state.companyId, 'prescriptions'), orderBy('date', 'desc'), orderBy('createdAt', 'desc')));
   // Normalize documents so each prescription represents a visit and contains a `tests` array.
   const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   prescriptionsCache = docs.map(r => {
@@ -1876,7 +1876,7 @@ async function onRxFilterChanged() {
 async function loadRxServerPage() {
   $('#rx-table-wrap').innerHTML = `<div class="u-center" style="padding:60px 0;"><div class="loader-ring"></div></div>`;
   $('#rx-pager').innerHTML = '';
-  let q = query(collection(db, 'companies', state.companyId, 'prescriptions'), orderBy('date', 'desc'), fsLimit(RX_PAGE_SIZE + 1));
+  let q = query(collection(db, 'companies', state.companyId, 'prescriptions'), orderBy('date', 'desc'), orderBy('createdAt', 'desc'), fsLimit(RX_PAGE_SIZE + 1));
   const cursor = rxCursors[rxPage - 1];
   if (cursor) q = query(q, startAfter(cursor));
   const [snap, countRes] = await Promise.all([
