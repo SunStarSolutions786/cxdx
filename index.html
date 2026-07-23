@@ -1541,7 +1541,7 @@ async function renderDashboardView(content) {
   if ($('#qa-match')) $('#qa-match').addEventListener('click', async () => {
     showToast('Running matching…', 'info');
     const r = await runMatching();
-    showToast(`Matching complete — ${r.matchedCount} matched, ${r.leakageCount} leakage`, 'success');
+    showToast(`Matching complete — ${r.matchedCount} matched test(s), ${r.leakageCount} leakage test(s)`, 'success');
     navigateTo('dashboard');
   });
   if ($('#qa-report')) $('#qa-report').addEventListener('click', () => navigateTo('reports'));
@@ -2855,7 +2855,7 @@ async function renderBillingView(content) {
   if ($('#bv-run-match')) $('#bv-run-match').addEventListener('click', async () => {
     const btn = $('#bv-run-match'); setRunMatchingBtnLoading(btn, true);
     showToast('Running matching — this can take a moment for large datasets…', 'info');
-    try { const r = await runMatching(); showToast(`Matching complete — ${r.matchedCount} matched, ${r.leakageCount} leakage`, 'success'); }
+    try { const r = await runMatching(); showToast(`Matching complete — ${r.matchedCount} matched test(s), ${r.leakageCount} leakage test(s)`, 'success'); }
     catch (err) { showToast(friendlyError(err), 'error'); }
     setRunMatchingBtnLoading(btn, false, `${icon('refresh')} Run Matching`);
   });
@@ -3069,6 +3069,9 @@ function windowDaysFromConfig(cfg) {
   return (raw === undefined || raw === null) ? -1 : raw; // -1 means "unlimited"
 }
 function currentWindowDays() { return windowDaysFromConfig(state.matchingConfig); }
+function canWriteBillingRows() {
+  return state.isSuperAdmin || state.user?.role === 'admin' || state.user?.canUploadBilling === true;
+}
 
 // companyId/windowDaysOverride let this run against a company other than the one currently
 // entered (used by the Super Admin's bulk-delete tools). Both default to the active session.
@@ -3121,19 +3124,31 @@ async function runMatching(companyId, windowDaysOverride) {
   for (const u of prescUpdates) { batch.update(u.ref, u.data); n++; if (n === 450) { await batch.commit(); batch = writeBatch(db); n = 0; } }
   if (n > 0) await batch.commit();
 
-  batch = writeBatch(db); n = 0;
-  for (const b of billingRows) {
-    const isUsed = usedBillingIds.has(b.id);
-    if (!!b.used !== isUsed) { batch.update(b.ref, { used: isUsed }); n++; if (n === 450) { await batch.commit(); batch = writeBatch(db); n = 0; } }
+  if (canWriteBillingRows()) {
+    batch = writeBatch(db); n = 0;
+    for (const b of billingRows) {
+      const isUsed = usedBillingIds.has(b.id);
+      if (!!b.used !== isUsed) { batch.update(b.ref, { used: isUsed }); n++; if (n === 450) { await batch.commit(); batch = writeBatch(db); n = 0; } }
+    }
+    if (n > 0) await batch.commit();
   }
-  if (n > 0) await batch.commit();
 
-  const matchedCount = prescUpdates.filter(u => u.data.matchStatus === 'matched').length;
-  const noTestCount = prescUpdates.filter(u => u.data.matchStatus === 'no-test').length;
+  const matchedCount = prescUpdates.reduce((count, u) => {
+    if (Array.isArray(u.data.tests)) return count + u.data.tests.filter(t => t.matchStatus === 'matched').length;
+    return count + (u.data.matchStatus === 'matched' ? 1 : 0);
+  }, 0);
+  const noTestCount = prescUpdates.reduce((count, u) => {
+    if (Array.isArray(u.data.tests)) return count + u.data.tests.filter(t => t.matchStatus === 'no-test').length;
+    return count + (u.data.matchStatus === 'no-test' ? 1 : 0);
+  }, 0);
+  const leakageCount = prescUpdates.reduce((count, u) => {
+    if (Array.isArray(u.data.tests)) return count + u.data.tests.filter(t => t.matchStatus === 'leakage').length;
+    return count + (u.data.matchStatus === 'leakage' ? 1 : 0);
+  }, 0);
   const finalRows = sortedPresc.map((p, i) => ({ ...p, matchStatus: prescUpdates[i].data.matchStatus, matchedAmount: prescUpdates[i].data.matchedAmount }));
   await reconcileSummaryDocs(companyId, finalRows);
   if (companyId === state.companyId) invalidatePrescriptionsCache();
-  return { matchedCount, leakageCount: prescUpdates.length - matchedCount - noTestCount, noTestCount, total: prescUpdates.length };
+  return { matchedCount, leakageCount, noTestCount, total: prescUpdates.length };
 }
 
 // Cheap alternative to runMatching() for a handful of just-created/edited
@@ -3194,7 +3209,7 @@ async function quickMatchBatch(prescriptionRefs) {
   const batch = writeBatch(db);
   prescUpdates.forEach(u => {
     batch.update(u.ref, { matchStatus: u.data.matchStatus, matchedAmount: u.data.matchedAmount, matchedBillingRef: u.data.matchedBillingRef });
-    if (u.data.consumedRef) batch.update(u.data.consumedRef, { used: true });
+    if (canWriteBillingRows() && u.data.consumedRef) batch.update(u.data.consumedRef, { used: true });
   });
   // Matching only ever changes matchStatus/matchedAmount on rows that already exist at a fixed
   // uhid+date — it never touches which visit a row belongs to, so no visitDelta is needed here.
