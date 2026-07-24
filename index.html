@@ -469,6 +469,16 @@ tr.total-row{position:sticky;bottom:0;}
 .file-drop:hover,.file-drop.drag{border-color:var(--teal-500);background:var(--teal-50);}
 .file-drop svg{width:30px;height:30px;color:var(--teal-500);margin:0 auto 8px;}
 .file-drop .fname{font-family:var(--font-mono);font-size:12.5px;color:var(--teal-700);margin-top:6px;}
+.attachment-row{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;
+  border:1px solid var(--line-200);border-radius:var(--radius-md);background:var(--paper-50);flex-wrap:wrap;
+}
+.attachment-row .attachment-file{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-900);}
+.attachment-row .attachment-file svg{width:16px;height:16px;color:var(--teal-600);flex-shrink:0;}
+.attachment-row .attachment-file a{color:var(--teal-700);font-weight:600;text-decoration:none;}
+.attachment-row .attachment-file a:hover{text-decoration:underline;}
+.rx-attach-btn{color:var(--teal-600);}
+.rx-attach-btn:hover{color:var(--teal-700);}
 
 .month-tile{
   display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border:1px solid var(--line-200);
@@ -611,6 +621,9 @@ import {
   collection, getDocs, query, where, orderBy, writeBatch, serverTimestamp, increment, startAfter,
   getCountFromServer, limit as fsLimit
 } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
+import {
+  getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject, listAll
+} from "https://www.gstatic.com/firebasejs/12.15.0/firebase-storage.js";
 
 // >>> PASTE YOUR FIREBASE PROJECT CONFIG HERE (Firebase Console → Project Settings → General → Your apps) <<<
 const firebaseConfig = {
@@ -631,6 +644,7 @@ const CONFIG_IS_PLACEHOLDER = firebaseConfig.apiKey === "YOUR_API_KEY";
 const fbApp = initializeApp(firebaseConfig);
 const auth = getAuth(fbApp);
 const db = getFirestore(fbApp);
+const storage = getStorage(fbApp);
 
 // Secondary app instance — lets Super Admin create new Company Admin accounts
 // without being signed out of their own session (standard Firebase client-side pattern).
@@ -735,6 +749,10 @@ function formatNum(v) { return toNum(v).toLocaleString('en-US'); }
 function formatPct(v) { return (isFinite(v) ? v : 0).toFixed(2) + '%'; }
 function normalizeUHID(v) { return (v || '').toString().replace(/\s+/g, '').toUpperCase(); }
 function normalizeForCompare(v) { return (v || '').toString().toLowerCase().trim().replace(/\s+/g, ' '); }
+// A "visit" = same patient (uhid), same date, same consultant. Two entries that share uhid+date but
+// have DIFFERENT consultants are treated as two separate visits/prescriptions everywhere — import
+// grouping, the Total Prescription count, and edit/delete/restore visit bookkeeping all use this.
+function visitKeyOf(r) { return normalizeUHID(r.uhid) + '|' + (r.date || '') + '|' + normalizeForCompare(r.consultant); }
 function todayISO() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
 function monthKeyFromDate(iso) { return iso ? iso.slice(0,7) : ''; }
 function monthLabel(monthKey) { if(!monthKey) return '—'; const [y,m]=monthKey.split('-'); return MONTH_NAMES[parseInt(m,10)-1] + "'" + y.slice(2); }
@@ -1178,7 +1196,7 @@ async function openManageCompanyModal(companyId) {
   const snap = await getDoc(doc(db, 'companies', companyId));
   if (!snap.exists()) { $('#mc-body').innerHTML = 'Company not found.'; return; }
   const c = snap.data();
-  const usersSnap = await getDocs(query(collection(db, 'users'), where('companyId', '==', companyId)));
+  const usersSnap = await getDocs(query(collection(db, 'users'), where('companyId', '==', companyId), where('role', '==', 'admin')));
   const admins = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
   $('#mc-body').innerHTML = `
@@ -1339,9 +1357,11 @@ function openBulkDeleteModal(companyId, companyName, companyMatchingConfig, init
       if (!ok) return;
       showToast('Deleting…', 'info');
       const snap = await getDocs(rxQuery);
+      const attachments = snap.docs.map(d => d.data().attachment).filter(Boolean);
       let batch = writeBatch(db), n = 0;
       for (const d of snap.docs) { batch.delete(d.ref); n++; if (n === 450) { await batch.commit(); batch = writeBatch(db); n = 0; } }
       if (n > 0) await batch.commit();
+      if (attachments.length) await Promise.all(attachments.map(a => deletePrescriptionAttachment(a)));
       await runMatching(companyId, windowDaysFromConfig(companyMatchingConfig));
       showToast(`${snap.docs.length} prescription(s) deleted`, 'success');
       openBulkDeleteModal(companyId, companyName, companyMatchingConfig, bdMasterTab);
@@ -1430,6 +1450,7 @@ async function deleteCompanyCascade(companyId) {
   await deleteAllInCollection(collection(db, 'companies', companyId, 'agents'));
   await deleteAllInCollection(collection(db, 'companies', companyId, 'monthlySummaries'));
   await deleteDoc(doc(db, 'companies', companyId, 'meta', 'dashboardSummary')).catch(() => {});
+  await deleteCompanyStorageFiles(companyId); // every prescription attachment for this company, in one sweep
   const usersSnap = await getDocs(query(collection(db, 'users'), where('companyId', '==', companyId)));
   if (usersSnap.docs.length) { const b = writeBatch(db); usersSnap.docs.forEach(d => b.delete(d.ref)); await b.commit(); }
   await deleteDoc(doc(db, 'companies', companyId));
@@ -1577,6 +1598,132 @@ function renderDashCharts(monthly, stats) {
 
 VIEW_RENDERERS['dashboard'] = renderDashboardView;
 
+/* ---- SECTION: PRESCRIPTION ATTACHMENTS (Firebase Storage) ---- */
+// Prescription scans/photos live in Firebase Storage, NOT Firestore — Firestore documents are
+// capped at 1MB and reads are billed per-document, so binary files belong in Storage; the
+// prescription doc just keeps a small { path, url, name, size, contentType } pointer. Access is
+// governed by storage.rules (a separate rules file from firestore.rules — see the setup notes
+// shared alongside this app for the one-time Firebase Console steps).
+
+const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024; // 10MB hard cap — also enforced server-side in storage.rules
+const ATTACHMENT_IMAGE_MAX_DIMENSION = 1600; // longest side, px — plenty for a scanned prescription, keeps phone photos small
+const ATTACHMENT_IMAGE_QUALITY = 0.75;
+
+function isImageFile(file) { return /^image\//.test(file.type); }
+function isPdfFile(file) { return file.type === 'application/pdf' || /\.pdf$/i.test(file.name || ''); }
+function formatFileSize(bytes) {
+  bytes = toNum(bytes);
+  if (!bytes) return '0 KB';
+  if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// Resizes + re-encodes an image client-side before upload, so a 4-8MB phone photo typically
+// becomes a few hundred KB — this (not anything server-side) is what actually keeps Storage small
+// and cheap. PDFs are uploaded as-is: real PDF recompression isn't something the browser can do
+// reliably, so we just cap PDF size instead (see ATTACHMENT_MAX_BYTES).
+async function compressImageFile(file) {
+  const bitmap = await createImageBitmap(file).catch(() => null);
+  if (!bitmap) return file; // fall back to the original if decoding fails for any reason
+  const scale = Math.min(1, ATTACHMENT_IMAGE_MAX_DIMENSION / Math.max(bitmap.width, bitmap.height));
+  const w = Math.max(1, Math.round(bitmap.width * scale));
+  const h = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h);
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', ATTACHMENT_IMAGE_QUALITY));
+  if (!blob || blob.size >= file.size) return file; // compression didn't help — keep the original
+  return new File([blob], (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+}
+
+// Uploads one attachment for one prescription and returns the metadata object to store on the
+// prescription doc. `prescriptionId` must already be known — new prescriptions get their ref (and
+// therefore its id) generated client-side before the save batch commits, same pattern already used
+// for history entries, so this works for brand-new prescriptions too, not just edits.
+async function uploadPrescriptionAttachment(companyId, prescriptionId, file) {
+  if (!isImageFile(file) && !isPdfFile(file)) throw new Error('Only image or PDF files can be attached.');
+  if (file.size > ATTACHMENT_MAX_BYTES) throw new Error('That file is larger than 10MB — please choose a smaller file.');
+  const toUpload = isImageFile(file) ? await compressImageFile(file) : file;
+  if (toUpload.size > ATTACHMENT_MAX_BYTES) throw new Error('That file is larger than 10MB even after compression — please choose a smaller file.');
+  const safeName = (file.name || 'attachment').replace(/[^a-zA-Z0-9.\-_]/g, '_').slice(-80);
+  const path = `companies/${companyId}/prescriptions/${prescriptionId}/${Date.now()}_${safeName}`;
+  const sRef = storageRef(storage, path);
+  await uploadBytes(sRef, toUpload, { contentType: toUpload.type || file.type || 'application/octet-stream' });
+  const url = await getDownloadURL(sRef);
+  return { path, url, name: file.name || safeName, size: toUpload.size, contentType: toUpload.type || file.type, uploadedAt: new Date().toISOString() };
+}
+
+async function deletePrescriptionAttachment(attachment) {
+  if (!attachment || !attachment.path) return;
+  try { await deleteObject(storageRef(storage, attachment.path)); } catch (e) { /* already gone — fine */ }
+}
+
+// Recursively removes every Storage file under a company's prefix. Used only when the whole
+// company is deleted (Storage has no bulk "delete folder" call, so this walks it by hand) — so
+// scans/photos don't sit around racking up storage cost after everything else is gone.
+async function deleteCompanyStorageFiles(companyId) {
+  async function walk(folderRef) {
+    let listing;
+    try { listing = await listAll(folderRef); } catch (e) { return; }
+    await Promise.all(listing.items.map(item => deleteObject(item).catch(() => {})));
+    await Promise.all(listing.prefixes.map(walk));
+  }
+  await walk(storageRef(storage, `companies/${companyId}`));
+}
+
+// Renders the attachment zone for the prescription form: either the existing file (with a
+// View/Remove option) or an upload dropzone. wireAttachmentPicker() below drives the interaction;
+// this function only ever produces the initial markup.
+function attachmentZoneHtml(attachment) {
+  if (attachment) {
+    return `<div class="attachment-row" id="rx-attachment-existing">
+      <span class="attachment-file">${icon('fileText')}<a href="${attachment.url}" target="_blank" rel="noopener">${escapeHtml(attachment.name)}</a><span class="u-muted" style="font-size:12px;">(${formatFileSize(attachment.size)})</span></span>
+      <button type="button" class="btn btn-ghost btn-sm" id="rx-attachment-remove">${icon('trash')} Remove</button>
+    </div>`;
+  }
+  return `<div class="file-drop" id="rx-attachment-drop" style="padding:14px;">
+    <input type="file" id="rx-attachment-file" accept="image/*,application/pdf" style="display:none;">
+    <div style="font-size:13px;display:flex;align-items:center;gap:8px;justify-content:center;">${icon('uploadCloud')} Choose a photo or PDF of the prescription</div>
+    <div class="fname" id="rx-attachment-fname"></div>
+  </div>`;
+}
+
+// Wires the attachment zone's interactions and returns an accessor the save handler calls to find
+// out what (if anything) changed: { file: File|null, remove: boolean }. `remove: true` with
+// `file: null` means "delete the existing attachment and don't add a new one"; a non-null `file`
+// always means "upload this (replacing whatever was there)".
+function wireAttachmentPicker(existingAttachment) {
+  let selectedFile = null;
+  let removeExisting = false;
+  const zone = $('#rx-attachment-zone');
+  function bindDropZone() {
+    const drop = $('#rx-attachment-drop');
+    if (!drop) return;
+    drop.onclick = () => $('#rx-attachment-file').click();
+    $('#rx-attachment-file').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (!isImageFile(file) && !isPdfFile(file)) { showToast('Only images or PDF files can be attached', 'error'); return; }
+      if (file.size > ATTACHMENT_MAX_BYTES) { showToast('That file is larger than 10MB', 'error'); return; }
+      selectedFile = file;
+      $('#rx-attachment-fname').textContent = `${file.name} (${formatFileSize(file.size)})`;
+    });
+  }
+  function bindRemoveButton() {
+    const removeBtn = $('#rx-attachment-remove');
+    if (!removeBtn) return;
+    removeBtn.addEventListener('click', () => {
+      removeExisting = true;
+      selectedFile = null;
+      zone.innerHTML = attachmentZoneHtml(null);
+      bindDropZone();
+    });
+  }
+  bindDropZone();
+  bindRemoveButton();
+  return () => ({ file: selectedFile, remove: removeExisting });
+}
+
 /* ---- SECTION: PRESCRIPTIONS ---- */
 // In-memory cache of the company's prescriptions, shared by Dashboard/Prescriptions/Reports.
 // Tagged with the companyId it was fetched for, so a stale cache can never leak across companies
@@ -1611,7 +1758,7 @@ async function loadAllPrescriptions(forceRefresh) {
   return prescriptionsCache;
 }
 function computeSummaryStats(rows) {
-  const distinctVisits = new Set(rows.map(r => (r.uhid || '') + '|' + (r.date || '')));
+  const distinctVisits = new Set(rows.map(r => visitKeyOf(r)));
   let totalTestGiven = 0, matchedCount = 0, prescriptionValue = 0, conversionValue = 0, leakageValue = 0, noTestCount = 0;
   rows.forEach(r => {
     const tests = Array.isArray(r.tests) && r.tests.length ? r.tests : (r.testGiven !== undefined ? [{ testGiven: r.testGiven, testAmount: r.testAmount, matchStatus: r.matchStatus, matchedAmount: r.matchedAmount }] : []);
@@ -1965,7 +2112,7 @@ function rxRowHtml(r) {
     <td>${escapeHtml(r.consultant || '—')}</td><td>${testsHtml}</td><td class="num">${formatMoney(totalAmt)}</td>
     <td>${statusBadgeHtml(pseudoRow)}</td>
     <td class="num">${totalMatched > 0 ? formatMoney(totalMatched) : '—'}</td><td>${escapeHtml(r.enteredBy || '—')}</td>${customFieldsTableCellsHtml(r)}
-    <td><div class="u-flex u-gap-8"><button class="icon-btn" id="hist-${r.id}" title="History">${icon('info')}</button><button class="icon-btn" id="edit-${r.id}">${icon('edit')}</button><button class="icon-btn danger" id="del-${r.id}">${icon('trash')}</button></div></td>
+    <td><div class="u-flex u-gap-8">${r.attachment ? `<a class="icon-btn" href="${r.attachment.url}" target="_blank" rel="noopener" title="View/download attachment">${icon('fileText')}</a>` : ''}<button class="icon-btn" id="hist-${r.id}" title="History">${icon('info')}</button><button class="icon-btn" id="edit-${r.id}">${icon('edit')}</button><button class="icon-btn danger" id="del-${r.id}">${icon('trash')}</button></div></td>
   </tr>`;
 }
 
@@ -2093,6 +2240,9 @@ function computeFieldChanges(oldRow, newRow) {
     if (fromStr !== toStr) changes.push({ field: f.key, label: f.label, from: fromStr, to: toStr });
   });
   if (JSON.stringify(oldRow.custom || {}) !== JSON.stringify(newRow.custom || {})) changes.push({ field: 'custom', label: 'Additional Details', from: '', to: '' });
+  const oldAttachName = oldRow.attachment ? oldRow.attachment.name : '';
+  const newAttachName = newRow.attachment ? newRow.attachment.name : '';
+  if (oldAttachName !== newAttachName) changes.push({ field: 'attachment', label: 'Attachment', from: oldAttachName || 'none', to: newAttachName || 'none' });
   return changes;
 }
 // Stages one append-only audit-log entry under a prescription's history subcollection, in the
@@ -2126,7 +2276,6 @@ async function renderPrescriptionFormView(content, params) {
       <div class="card card-pad" style="margin-bottom:18px;">
         <div class="u-between">
           <span class="section-label" style="margin-bottom:0;"><span class="form-section-icon">${icon('flask')}</span>Tests Given</span>
-          ${isEdit ? '' : `<span class="tests-summary-pill" id="tests-summary">0 tests · ${formatMoney(0)}</span>`}
         </div>
         <div style="margin-top:14px;">
           <div id="test-rows-container"></div>
@@ -2148,6 +2297,11 @@ async function renderPrescriptionFormView(content, params) {
         </div>
       </div>
 
+      <div class="card card-pad" style="margin-bottom:18px;">
+        <span class="section-label"><span class="form-section-icon">${icon('fileText')}</span>Attachment <span class="hint" style="font-weight:400;">(optional — photo or PDF of the prescription)</span></span>
+        <div style="margin-top:14px;" id="rx-attachment-zone">${attachmentZoneHtml(existing && existing.attachment)}</div>
+      </div>
+
       <div class="card card-pad">
         <span class="section-label"><span class="form-section-icon">${icon('fileText')}</span>Remarks</span>
         <textarea id="rx-remarks" style="margin-top:10px;" placeholder="Optional notes…">${existing ? escapeHtml(existing.remarks || '') : ''}</textarea>
@@ -2158,6 +2312,7 @@ async function renderPrescriptionFormView(content, params) {
   $('#rxp-cancel').addEventListener('click', () => navigateTo('prescriptions'));
   bindUhidNormalize($('#rx-uhid'));
   const consultantSelect = initSearchSelect('rx-consultant', doctorSearchOptions(), existing ? existing.consultant : '');
+  const getAttachmentChange = wireAttachmentPicker(existing && existing.attachment);
   // Tests area: support multiple editable test rows for both new and edit flows.
   if (!isEdit) {
     addTestRow();
@@ -2225,15 +2380,25 @@ async function renderPrescriptionFormView(content, params) {
           }
           newTests.push({ testGiven, testAmount, matchStatus, matchedAmount, matchedBillingRef });
         }
-        const newRow = Object.assign({}, oldRow, { date, uhid: uhidVal, patientName, consultant, enteredBy, consultationFollowUp: cfu, testFollowUp: tfu, remarks, tests: newTests, monthKey: monthKeyFromDate(date), custom });
-        const visitKeyChanged = oldRow.uhid !== uhidVal || oldRow.date !== date;
+        // Attachment: upload a newly-chosen file (replacing any old one) or honor an explicit removal.
+        const attachmentChange = getAttachmentChange();
+        let attachment = oldRow.attachment || null;
+        if (attachmentChange.file) {
+          attachment = await uploadPrescriptionAttachment(state.companyId, existing.id, attachmentChange.file);
+          if (oldRow.attachment) await deletePrescriptionAttachment(oldRow.attachment);
+        } else if (attachmentChange.remove && oldRow.attachment) {
+          await deletePrescriptionAttachment(oldRow.attachment);
+          attachment = null;
+        }
+        const newRow = Object.assign({}, oldRow, { date, uhid: uhidVal, patientName, consultant, enteredBy, consultationFollowUp: cfu, testFollowUp: tfu, remarks, tests: newTests, monthKey: monthKeyFromDate(date), custom, attachment });
+        const visitKeyChanged = oldRow.uhid !== uhidVal || oldRow.date !== date || normalizeForCompare(oldRow.consultant) !== normalizeForCompare(consultant);
         let summaryChanges;
         if (!visitKeyChanged) {
           summaryChanges = [{ oldRow, newRow }];
         } else {
           const [oldSiblings, newSiblings] = await Promise.all([
-            getCountFromServer(query(collection(db, 'companies', state.companyId, 'prescriptions'), where('uhid', '==', oldRow.uhid), where('date', '==', oldRow.date))),
-            getCountFromServer(query(collection(db, 'companies', state.companyId, 'prescriptions'), where('uhid', '==', uhidVal), where('date', '==', date))),
+            getCountFromServer(query(collection(db, 'companies', state.companyId, 'prescriptions'), where('uhid', '==', oldRow.uhid), where('date', '==', oldRow.date), where('consultant', '==', oldRow.consultant || ''))),
+            getCountFromServer(query(collection(db, 'companies', state.companyId, 'prescriptions'), where('uhid', '==', uhidVal), where('date', '==', date), where('consultant', '==', consultant || ''))),
           ]);
           const oldVisitEmptied = oldSiblings.data().count <= 1;
           const newVisitIsNew = newSiblings.data().count === 0;
@@ -2243,7 +2408,7 @@ async function renderPrescriptionFormView(content, params) {
           ];
         }
         const editBatch = writeBatch(db);
-        editBatch.update(ref, { date, uhid: uhidVal, patientName, consultant, enteredBy, consultationFollowUp: cfu, testFollowUp: tfu, remarks, tests: newTests, monthKey: monthKeyFromDate(date), custom, lastModifiedByUid: state.user.uid, lastModifiedByName: state.user.name, lastModifiedAt: serverTimestamp() });
+        editBatch.update(ref, { date, uhid: uhidVal, patientName, consultant, enteredBy, consultationFollowUp: cfu, testFollowUp: tfu, remarks, tests: newTests, monthKey: monthKeyFromDate(date), custom, attachment, lastModifiedByUid: state.user.uid, lastModifiedByName: state.user.name, lastModifiedAt: serverTimestamp() });
         stageSummaryChanges(editBatch, state.companyId, summaryChanges);
         const fieldChanges = computeFieldChanges(oldRow, newRow);
         if (JSON.stringify(oldRow.tests || []) !== JSON.stringify(newRow.tests || [])) fieldChanges.push({ field: 'tests', label: 'Tests', from: JSON.stringify(oldRow.tests || []), to: JSON.stringify(newRow.tests || []) });
@@ -2255,7 +2420,6 @@ async function renderPrescriptionFormView(content, params) {
         navigateTo('prescriptions');
       } else {
         const rowEls = $$('#test-rows-container .test-row');
-        const docs = [];
         // Aggregate the multiple test rows into a single prescription document with a `tests` array.
         const tests = [];
         for (const rowEl of rowEls) {
@@ -2265,9 +2429,11 @@ async function renderPrescriptionFormView(content, params) {
           tests.push({ testGiven, testAmount, matchStatus: testGiven === NO_TEST_LABEL ? 'no-test' : 'leakage', matchedAmount: 0, matchedBillingRef: null });
         }
         if (!tests.length) { showToast('Select at least one test', 'error'); setBtnLoading(btn, false, `${icon('check')} Save Prescription`); return; }
-        const withDefaults = { date, uhid: uhidVal, patientName, consultant, enteredBy: state.user.name, enteredByUid: state.user.uid, consultationFollowUp: cfu, testFollowUp: tfu, remarks, tests, monthKey: monthKeyFromDate(date), custom, createdAt: serverTimestamp() };
+        const ref = doc(collection(db, 'companies', state.companyId, 'prescriptions')); // generated up front so its id can be used as the attachment's storage path
+        const attachmentChange = getAttachmentChange();
+        const attachment = attachmentChange.file ? await uploadPrescriptionAttachment(state.companyId, ref.id, attachmentChange.file) : null;
+        const withDefaults = { date, uhid: uhidVal, patientName, consultant, enteredBy: state.user.name, enteredByUid: state.user.uid, consultationFollowUp: cfu, testFollowUp: tfu, remarks, tests, monthKey: monthKeyFromDate(date), custom, attachment, createdAt: serverTimestamp() };
         const batch = writeBatch(db);
-        const ref = doc(collection(db, 'companies', state.companyId, 'prescriptions'));
         batch.set(ref, withDefaults);
         stageHistoryEntry(batch, ref, { action: 'created', byUid: state.user.uid, byName: state.user.name });
         // Single visit document — this is a new distinct visit
@@ -2342,7 +2508,7 @@ async function deletePrescriptionRow(id, row) {
   );
   if (!ok) return;
   try {
-    const siblingCount = await getCountFromServer(query(collection(db, 'companies', state.companyId, 'prescriptions'), where('uhid', '==', row.uhid), where('date', '==', row.date)));
+    const siblingCount = await getCountFromServer(query(collection(db, 'companies', state.companyId, 'prescriptions'), where('uhid', '==', row.uhid), where('date', '==', row.date), where('consultant', '==', row.consultant || '')));
     const isLastOfVisit = siblingCount.data().count <= 1;
     const ref = doc(db, 'companies', state.companyId, 'prescriptions', id);
     const batch = writeBatch(db);
@@ -2351,6 +2517,7 @@ async function deletePrescriptionRow(id, row) {
       stageHistoryEntry(batch, ref, { action: 'deleted', byUid: state.user.uid, byName: state.user.name });
     } else {
       batch.delete(ref);
+      if (row.attachment) await deletePrescriptionAttachment(row.attachment);
     }
     // Soft- and hard-deleted rows both stop counting toward the live totals immediately.
     stageSummaryChanges(batch, state.companyId, [{ oldRow: row, newRow: null, visitDelta: isLastOfVisit ? -1 : 0 }]);
@@ -2511,10 +2678,12 @@ function buildPrescriptionImportRow(r, map) {
   };
 }
 async function bulkImportPrescriptions(rows) {
-  // Group incoming rows by visit (uhid + date) so each visit becomes one prescription doc
+  // Group incoming rows by visit (uhid + date + consultant) so each visit becomes one prescription
+  // doc. Same patient + same date but a DIFFERENT consultant is a different visit, so it becomes
+  // its own separate prescription instead of being folded into the same one.
   const grouped = {};
   for (const r of rows) {
-    const visitKey = (r.uhid || '') + '|' + (r.date || '');
+    const visitKey = visitKeyOf(r);
     if (!grouped[visitKey]) grouped[visitKey] = Object.assign({}, r, { tests: [] });
     grouped[visitKey].tests.push({ testGiven: r.testGiven, testAmount: r.testAmount, matchStatus: r.testGiven === NO_TEST_LABEL ? 'no-test' : 'leakage', matchedAmount: 0, matchedBillingRef: null });
   }
@@ -2787,11 +2956,11 @@ async function restorePrescription(row) {
   if (!ok) return;
   try {
     const ref = doc(db, 'companies', state.companyId, 'prescriptions', row.id);
-    // Counts every doc sharing this uhid+date, including this one (still deleted at query time).
-    // If it's the only one, restoring clearly reintroduces the visit; if others already exist
-    // they might themselves be active or also deleted — a rare, cheap-to-miss edge case that
-    // self-corrects on the next Run Matching, same convention used throughout the app.
-    const siblingCount = await getCountFromServer(query(collection(db, 'companies', state.companyId, 'prescriptions'), where('uhid', '==', row.uhid), where('date', '==', row.date)));
+    // Counts every doc sharing this uhid+date+consultant, including this one (still deleted at
+    // query time). If it's the only one, restoring clearly reintroduces the visit; if others
+    // already exist they might themselves be active or also deleted — a rare, cheap-to-miss edge
+    // case that self-corrects on the next Run Matching, same convention used throughout the app.
+    const siblingCount = await getCountFromServer(query(collection(db, 'companies', state.companyId, 'prescriptions'), where('uhid', '==', row.uhid), where('date', '==', row.date), where('consultant', '==', row.consultant || '')));
     const restoredRow = { ...row, deleted: false, deletedAt: null, deletedByUid: null, deletedByName: null };
     const batch = writeBatch(db);
     batch.update(ref, { deleted: false, deletedAt: null, deletedByUid: null, deletedByName: null });
@@ -2810,6 +2979,7 @@ async function purgePrescription(row) {
   try {
     // Already excluded from every stat since it was soft-deleted — purging doesn't touch the
     // summary again (that would double-count the removal).
+    if (row.attachment) await deletePrescriptionAttachment(row.attachment);
     await deleteDoc(doc(db, 'companies', state.companyId, 'prescriptions', row.id));
     showToast('Permanently deleted', 'success');
     loadAndRenderRecycleBin();
@@ -2869,11 +3039,20 @@ async function renderBillingView(content) {
       <div><div class="m-name">${monthLabel(d.monthKey)}</div><div class="m-meta">${formatNum(d.rowCount || 0)} rows · uploaded ${d.uploadedAt && d.uploadedAt.toDate ? formatDateDisplay(d.uploadedAt.toDate().toISOString().slice(0, 10)) : 'just now'}</div></div>
       <div class="u-flex u-gap-8">
         <button class="btn btn-ghost btn-sm" id="bv-view-${d.id}">${icon('eye')} View</button>
-        ${state.isAgent ? '' : `<button class="btn btn-ghost btn-sm" id="bv-replace-${d.id}">${icon('refresh')} Replace</button><button class="btn btn-danger btn-sm" id="bv-delete-${d.id}">${icon('trash')} Delete</button>`}
+        ${state.isAgent ? '' : `<button class="btn btn-ghost btn-sm" id="bv-match-${d.id}">${icon('refresh')} Match Month</button><button class="btn btn-ghost btn-sm" id="bv-replace-${d.id}">${icon('refresh')} Replace</button><button class="btn btn-danger btn-sm" id="bv-delete-${d.id}">${icon('trash')} Delete</button>`}
       </div>
     </div>`).join('');
   dumps.forEach(d => {
     $('#bv-view-' + d.id).addEventListener('click', () => viewBillingDumpRows(d.id));
+    if ($('#bv-match-' + d.id)) $('#bv-match-' + d.id).addEventListener('click', async () => {
+      const btn = $('#bv-match-' + d.id); setRunMatchingBtnLoading(btn, true);
+      showToast(`Matching ${monthLabel(d.monthKey)} against all prescriptions…`, 'info');
+      try {
+        const r = await runMatchingForMonth(d.monthKey);
+        showToast(`${monthLabel(d.monthKey)} matched — ${r.matchedCount} test(s) newly matched`, 'success');
+      } catch (err) { showToast(friendlyError(err), 'error'); }
+      setRunMatchingBtnLoading(btn, false, `${icon('refresh')} Match Month`);
+    });
     if ($('#bv-replace-' + d.id)) $('#bv-replace-' + d.id).addEventListener('click', () => openBillingUploadModal(d.id));
     if ($('#bv-delete-' + d.id)) $('#bv-delete-' + d.id).addEventListener('click', () => deleteBillingDump(d.id));
   });
@@ -3024,9 +3203,16 @@ async function uploadBillingDump(monthKey, fileRows, map, opts) {
   }
   if (n > 0) await batch.commit();
   await setDoc(doc(db, 'companies', state.companyId, 'billingDumps', monthKey), { monthKey, rowCount: count, uploadedAt: serverTimestamp() });
-  const newConfig = Object.assign({}, state.matchingConfig, { billingMap: map });
-  await updateDoc(doc(db, 'companies', state.companyId), { matchingConfig: newConfig });
-  state.matchingConfig = newConfig;
+  // Remembering the column mapping on the company doc is a convenience for next time, not part of
+  // the upload itself — and firestore.rules only allows Admin/SuperAdmin to update the company doc
+  // (`allow update: if hasCompanyAccess(companyId)`), not Agents (even with canUploadBilling). Only
+  // attempt it when we actually have that permission, so an Agent's upload doesn't fail/appear
+  // broken on this last, non-essential step.
+  if (state.isSuperAdmin || state.user?.role === 'admin') {
+    const newConfig = Object.assign({}, state.matchingConfig, { billingMap: map });
+    await updateDoc(doc(db, 'companies', state.companyId), { matchingConfig: newConfig });
+    state.matchingConfig = newConfig;
+  }
   if (skipped > 0) showToast(`${skipped} row${skipped>1?'s':''} were skipped because dates could not be parsed`, 'info');
 }
 
@@ -3145,10 +3331,92 @@ async function runMatching(companyId, windowDaysOverride) {
     if (Array.isArray(u.data.tests)) return count + u.data.tests.filter(t => t.matchStatus === 'leakage').length;
     return count + (u.data.matchStatus === 'leakage' ? 1 : 0);
   }, 0);
-  const finalRows = sortedPresc.map((p, i) => ({ ...p, matchStatus: prescUpdates[i].data.matchStatus, matchedAmount: prescUpdates[i].data.matchedAmount }));
+  const finalRows = sortedPresc.map((p, i) => ({ ...p, ...prescUpdates[i].data }));
   await reconcileSummaryDocs(companyId, finalRows);
   if (companyId === state.companyId) invalidatePrescriptionsCache();
   return { matchedCount, leakageCount, noTestCount, total: prescUpdates.length };
+}
+
+// Matches ONE month's billing rows against the full prescription list, without reading any other
+// month's billing dump rows — the read cost scales with "how many rows in this one month" instead
+// of "how many rows across every month ever uploaded". Purely additive: only fills in tests that
+// are still unmatched, using this month's still-unused rows; it never revisits tests that are
+// already matched and never touches billing rows outside this month. Because of that, it won't
+// undo/re-check anything if you've changed the matching window or want a full from-scratch
+// verification — use the main "Run Matching" button (runMatching()) for that.
+async function runMatchingForMonth(monthKey, companyId) {
+  companyId = companyId || state.companyId;
+  const [prescSnap, rowsSnap] = await Promise.all([
+    getDocs(collection(db, 'companies', companyId, 'prescriptions')),
+    getDocs(collection(db, 'companies', companyId, 'billingDumps', monthKey, 'rows')),
+  ]);
+  const windowDays = currentWindowDays();
+  const byUhid = {};
+  rowsSnap.docs.forEach(d => {
+    const row = { id: d.id, ref: d.ref, ...d.data() };
+    if (!row.used) (byUhid[row.uhid] = byUhid[row.uhid] || []).push(row);
+  });
+  Object.values(byUhid).forEach(list => list.sort((a, b) => (a.date < b.date ? -1 : 1)));
+
+  const hasUnmatchedTest = (p) => {
+    const tests = Array.isArray(p.tests) && p.tests.length ? p.tests : (p.testGiven !== undefined ? [p] : []);
+    return tests.some(t => t.testGiven !== NO_TEST_LABEL && t.matchStatus !== 'matched' && t.matchStatus !== 'no-test');
+  };
+  const prescriptions = prescSnap.docs.map(d => ({ id: d.id, ref: d.ref, ...d.data() }))
+    .filter(p => !p.deleted && byUhid[p.uhid] && hasUnmatchedTest(p))
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+  const usedBillingIds = new Set();
+  const prescUpdates = [];
+  for (const p of prescriptions) {
+    const candidatesForUhid = byUhid[p.uhid] || [];
+    if (Array.isArray(p.tests) && p.tests.length) {
+      const updatedTests = [];
+      const consumedRefs = [];
+      let changed = false;
+      for (const t of p.tests) {
+        if (t.matchStatus === 'matched' || t.testGiven === NO_TEST_LABEL) { updatedTests.push(t); continue; }
+        const pForTest = Object.assign({}, p, { testGiven: t.testGiven, testAmount: t.testAmount });
+        const decision = decideMatch(pForTest, candidatesForUhid, usedBillingIds, windowDays);
+        if (decision.matchStatus === 'matched') {
+          changed = true;
+          if (decision.consumedRef) consumedRefs.push(decision.consumedRef);
+          updatedTests.push(Object.assign({}, t, { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef }));
+        } else {
+          updatedTests.push(t); // still unmatched — leave exactly as-is, don't overwrite with a fresh 'leakage' object
+        }
+      }
+      if (!changed) continue;
+      const allMatched = updatedTests.every(t => t.matchStatus === 'matched');
+      const allNoTest = updatedTests.every(t => t.testGiven === NO_TEST_LABEL || t.matchStatus === 'no-test');
+      const totalMatched = updatedTests.reduce((s, t) => s + (t.matchStatus === 'matched' ? toNum(t.matchedAmount) : 0), 0);
+      prescUpdates.push({ ref: p.ref, oldRow: p, data: { tests: updatedTests, matchStatus: allMatched ? 'matched' : (allNoTest ? 'no-test' : 'leakage'), matchedAmount: totalMatched, consumedRefs } });
+    } else {
+      const decision = decideMatch(p, candidatesForUhid, usedBillingIds, windowDays);
+      if (decision.matchStatus !== 'matched') continue;
+      prescUpdates.push({ ref: p.ref, oldRow: p, data: { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef || null, consumedRefs: decision.consumedRef ? [decision.consumedRef] : [] } });
+    }
+  }
+
+  if (!prescUpdates.length) return { matchedCount: 0, total: 0 };
+
+  const batch = writeBatch(db);
+  const summaryChanges = [];
+  prescUpdates.forEach(u => {
+    const upd = { matchStatus: u.data.matchStatus, matchedAmount: u.data.matchedAmount, matchedBillingRef: u.data.matchedBillingRef || null };
+    if (u.data.tests) upd.tests = u.data.tests;
+    batch.update(u.ref, upd);
+    if (canWriteBillingRows()) u.data.consumedRefs.forEach(ref => batch.update(ref, { used: true }));
+    const newRow = { ...u.oldRow, matchStatus: u.data.matchStatus, matchedAmount: u.data.matchedAmount };
+    if (u.data.tests) newRow.tests = u.data.tests;
+    summaryChanges.push({ oldRow: u.oldRow, newRow });
+  });
+  stageSummaryChanges(batch, companyId, summaryChanges);
+  await batch.commit();
+  if (companyId === state.companyId) invalidatePrescriptionsCache();
+
+  const matchedCount = prescUpdates.reduce((c, u) => c + u.data.consumedRefs.length, 0);
+  return { matchedCount, total: prescUpdates.length };
 }
 
 // Cheap alternative to runMatching() for a handful of just-created/edited
@@ -3186,10 +3454,12 @@ async function quickMatchBatch(prescriptionRefs) {
     if (Array.isArray(p.tests) && p.tests.length) {
       const updatedTests = [];
       let totalMatched = 0; let anyLeak = false, allMatched = true, allNoTest = true;
+      const consumedRefs = [];
       for (const t of p.tests) {
         if (t.testGiven === NO_TEST_LABEL) { updatedTests.push(Object.assign({}, t, { matchStatus: 'no-test', matchedAmount: 0, matchedBillingRef: null })); allMatched = false; continue; }
         const pForTest = Object.assign({}, p, { testGiven: t.testGiven, testAmount: t.testAmount });
         const decision = decideMatch(pForTest, candidates, usedInBatch, windowDays);
+        if (decision.consumedRef) consumedRefs.push(decision.consumedRef);
         updatedTests.push(Object.assign({}, t, { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef }));
         totalMatched += decision.matchedAmount || 0;
         if (decision.matchStatus !== 'matched') allMatched = false;
@@ -3197,23 +3467,29 @@ async function quickMatchBatch(prescriptionRefs) {
         if (decision.matchStatus === 'leakage') anyLeak = true;
       }
       const aggStatus = allMatched ? 'matched' : (allNoTest ? 'no-test' : (anyLeak ? 'leakage' : 'leakage'));
-      prescUpdates.push({ ref: p.ref, oldRow: p, data: { tests: updatedTests, matchStatus: aggStatus, matchedAmount: totalMatched } });
+      prescUpdates.push({ ref: p.ref, oldRow: p, data: { tests: updatedTests, matchStatus: aggStatus, matchedAmount: totalMatched, consumedRefs } });
     } else {
       // legacy single-test row path
-      if (p.testGiven === NO_TEST_LABEL) { prescUpdates.push({ ref: p.ref, oldRow: p, data: { matchStatus: 'no-test', matchedAmount: 0, matchedBillingRef: null } }); continue; }
+      if (p.testGiven === NO_TEST_LABEL) { prescUpdates.push({ ref: p.ref, oldRow: p, data: { matchStatus: 'no-test', matchedAmount: 0, matchedBillingRef: null, consumedRefs: [] } }); continue; }
       const decision = decideMatch(p, candidates, usedInBatch, windowDays);
-      prescUpdates.push({ ref: p.ref, oldRow: p, data: { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef || null, consumedRef: decision.consumedRef } });
+      prescUpdates.push({ ref: p.ref, oldRow: p, data: { matchStatus: decision.matchStatus, matchedAmount: decision.matchedAmount, matchedBillingRef: decision.matchedBillingRef || null, consumedRefs: decision.consumedRef ? [decision.consumedRef] : [] } });
     }
   }
 
   const batch = writeBatch(db);
+  const summaryChanges = [];
   prescUpdates.forEach(u => {
-    batch.update(u.ref, { matchStatus: u.data.matchStatus, matchedAmount: u.data.matchedAmount, matchedBillingRef: u.data.matchedBillingRef || null });
-    if (canWriteBillingRows() && u.data.consumedRef) batch.update(u.data.consumedRef, { used: true });
+    const upd = { matchStatus: u.data.matchStatus, matchedAmount: u.data.matchedAmount, matchedBillingRef: u.data.matchedBillingRef || null };
+    if (u.data.tests) upd.tests = u.data.tests; // <- was missing entirely; this is what actually persists per-test match results
+    batch.update(u.ref, upd);
+    if (canWriteBillingRows()) u.data.consumedRefs.forEach(ref => batch.update(ref, { used: true }));
+    const newRow = { ...u.oldRow, matchStatus: u.data.matchStatus, matchedAmount: u.data.matchedAmount };
+    if (u.data.tests) newRow.tests = u.data.tests; // <- same omission here fed stale data into the summary counters
+    summaryChanges.push({ oldRow: u.oldRow, newRow });
   });
   // Matching only ever changes matchStatus/matchedAmount on rows that already exist at a fixed
   // uhid+date — it never touches which visit a row belongs to, so no visitDelta is needed here.
-  stageSummaryChanges(batch, state.companyId, prescUpdates.map(u => ({ oldRow: u.oldRow, newRow: { ...u.oldRow, matchStatus: u.data.matchStatus, matchedAmount: u.data.matchedAmount } })));
+  stageSummaryChanges(batch, state.companyId, summaryChanges);
   await batch.commit();
   invalidatePrescriptionsCache();
 }
